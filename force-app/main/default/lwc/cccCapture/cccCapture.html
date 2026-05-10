@@ -1,0 +1,92 @@
+<template>
+    <lightning-card title="CCC Capture" icon-name="standard:work_order_item">
+        <div class="slds-card__body slds-card__body_inner">
+
+            <!-- Input state -->
+            <template lwc:if={isInput}>
+                <lightning-textarea
+                    label="Describe the work performed"
+                    placeholder="Tell me what you observed, what caused it, and what you did to fix it..."
+                    value={rawInput}
+                    onchange={handleInputChange}
+                    max-length="32768">
+                </lightning-textarea>
+                <div class="slds-m-top_medium">
+                    <lightning-button
+                        label="Extract CCC"
+                        variant="brand"
+                        onclick={handleSubmit}
+                        disabled={isSubmitDisabled}>
+                    </lightning-button>
+                </div>
+            </template>
+
+            <!-- Loading state -->
+            <template lwc:elseif={isLoading}>
+                <div class="slds-align_absolute-center slds-p-around_large">
+                    <lightning-spinner
+                        alternative-text="Extracting CCC..."
+                        size="medium">
+                    </lightning-spinner>
+                    <p class="slds-m-top_large slds-text-align_center slds-text-color_weak">
+                        Extracting Complaint, Cause &amp; Correction…
+                    </p>
+                </div>
+            </template>
+
+            <!-- Success state -->
+            <template lwc:elseif={isSuccess}>
+                <div class="slds-m-bottom_small">
+                    <lightning-icon
+                        icon-name="utility:success"
+                        variant="success"
+                        size="x-small"
+                        class="slds-m-right_x-small">
+                    </lightning-icon>
+                    <span class="slds-text-color_success slds-text-body_regular">
+                        CCC saved to Work Order
+                    </span>
+                </div>
+
+                <dl class="slds-dl_horizontal slds-m-top_medium">
+                    <dt class="slds-dl_horizontal__label slds-text-title_caps">Complaint</dt>
+                    <dd class="slds-dl_horizontal__detail">{result.complaint}</dd>
+
+                    <dt class="slds-dl_horizontal__label slds-text-title_caps">Cause</dt>
+                    <dd class="slds-dl_horizontal__detail">{result.cause}</dd>
+
+                    <dt class="slds-dl_horizontal__label slds-text-title_caps">Correction</dt>
+                    <dd class="slds-dl_horizontal__detail">{result.correction}</dd>
+                </dl>
+
+                <div class="slds-m-top_medium">
+                    <lightning-button
+                        label="New Entry"
+                        variant="neutral"
+                        onclick={handleReset}>
+                    </lightning-button>
+                </div>
+            </template>
+
+            <!-- Error state -->
+            <template lwc:elseif={isError}>
+                <div class="slds-notify slds-notify_alert slds-alert_error" role="alert">
+                    <lightning-icon
+                        icon-name="utility:error"
+                        size="x-small"
+                        class="slds-m-right_x-small">
+                    </lightning-icon>
+                    {errorMessage}
+                </div>
+                <div class="slds-m-top_medium">
+                    <lightning-button
+                        label="Try Again"
+                        variant="neutral"
+                        onclick={handleReset}>
+                    </lightning-button>
+                </div>
+            </template>
+
+        </div>
+    </lightning-card>
+</template>

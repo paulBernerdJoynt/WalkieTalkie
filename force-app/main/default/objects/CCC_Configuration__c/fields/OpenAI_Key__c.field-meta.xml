@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>OpenAI_Key__c</fullName>
+    <description>OpenAI API key (Bearer token). Protected custom setting — inaccessible from formula fields or flows.</description>
+    <label>OpenAI Key</label>
+    <length>255</length>
+    <type>Text</type>
+    <unique>false</unique>
+</CustomField>

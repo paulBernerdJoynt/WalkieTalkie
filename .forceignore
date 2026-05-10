@@ -1,0 +1,4 @@
+# forceignore v2
+.sfdx
+.localdevserver
+node_modules
