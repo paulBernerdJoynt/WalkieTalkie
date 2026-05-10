@@ -33,19 +33,20 @@ public with sharing class CCCController {
             throw new AuraHandledException('Input text is required.');
         }
 
-        String apiKey = getApiKey();
+        String apiKey    = getApiKey();
+        String promptLog = '[SYSTEM PROMPT]\n' + SYSTEM_PROMPT + '\n\n[USER INPUT]\n' + rawInput;
 
         HttpRequest  req = buildRequest(apiKey, rawInput);
         HttpResponse res;
         try {
             res = new Http().send(req);
         } catch (CalloutException e) {
-            persistRawInput(workOrderId, rawInput);
+            persistRawInput(workOrderId, rawInput, promptLog, null);
             throw new AuraHandledException('LLM connection failed — raw input saved. (' + e.getMessage() + ')');
         }
 
         if (res.getStatusCode() != 200) {
-            persistRawInput(workOrderId, rawInput);
+            persistRawInput(workOrderId, rawInput, promptLog, res.getBody());
             throw new AuraHandledException(
                 'LLM returned HTTP ' + res.getStatusCode() + ' — raw input saved.'
             );
@@ -54,11 +55,13 @@ public with sharing class CCCController {
         Map<String, String> ccc = parseResponse(res.getBody());
 
         update new WorkOrder(
-            Id              = workOrderId,
-            CCC_Raw_Input__c  = rawInput,
-            CCC_Complaint__c  = ccc.get('complaint'),
-            CCC_Cause__c      = ccc.get('cause'),
-            CCC_Correction__c = ccc.get('correction')
+            Id                  = workOrderId,
+            CCC_Raw_Input__c    = rawInput,
+            CCC_Prompt_Log__c   = promptLog,
+            CCC_Response_Log__c = res.getBody(),
+            CCC_Complaint__c    = ccc.get('complaint'),
+            CCC_Cause__c        = ccc.get('cause'),
+            CCC_Correction__c   = ccc.get('correction')
         );
 
         return ccc;
@@ -118,9 +121,14 @@ public with sharing class CCCController {
         }
     }
 
-    private static void persistRawInput(String workOrderId, String rawInput) {
+    private static void persistRawInput(String workOrderId, String rawInput, String promptLog, String responseLog) {
         try {
-            update new WorkOrder(Id = workOrderId, CCC_Raw_Input__c = rawInput);
+            update new WorkOrder(
+                Id                  = workOrderId,
+                CCC_Raw_Input__c    = rawInput,
+                CCC_Prompt_Log__c   = promptLog,
+                CCC_Response_Log__c = responseLog
+            );
         } catch (Exception e) {
             // Best-effort — do not mask the upstream error
         }

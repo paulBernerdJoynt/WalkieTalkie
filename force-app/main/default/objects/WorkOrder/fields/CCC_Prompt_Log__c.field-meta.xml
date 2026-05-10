@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>CCC_Prompt_Log__c</fullName>
+    <description>Full prompt sent to the LLM: system instructions followed by the technician input. Written on every successful callout for auditability.</description>
+    <label>CCC — Prompt Sent</label>
+    <length>131072</length>
+    <type>LongTextArea</type>
+    <visibleLines>6</visibleLines>
+</CustomField>
