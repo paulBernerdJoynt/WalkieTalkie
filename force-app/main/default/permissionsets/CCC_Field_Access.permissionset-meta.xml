@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PermissionSet xmlns="http://soap.sforce.com/2006/04/metadata">
+    <description>Grants read-only visibility to all CCC fields on Work Order. Editable=false keeps fields read-only in the UI; Apex writes to them in system context regardless.</description>
+    <fieldPermissions>
+        <editable>false</editable>
+        <field>WorkOrder.CCC_Raw_Input__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>false</editable>
+        <field>WorkOrder.CCC_Complaint__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>false</editable>
+        <field>WorkOrder.CCC_Cause__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>false</editable>
+        <field>WorkOrder.CCC_Correction__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <hasActivationRequired>false</hasActivationRequired>
+    <label>CCC Field Access</label>
+</PermissionSet>
