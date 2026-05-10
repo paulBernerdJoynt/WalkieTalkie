@@ -31,6 +31,11 @@
         <field>WorkOrder.CCC_Response_Log__c</field>
         <readable>true</readable>
     </fieldPermissions>
+    <fieldPermissions>
+        <editable>false</editable>
+        <field>WorkOrder.CCC_Transcript__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
     <hasActivationRequired>false</hasActivationRequired>
     <label>CCC Field Access</label>
 </PermissionSet>

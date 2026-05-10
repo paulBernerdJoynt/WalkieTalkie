@@ -1,8 +1,10 @@
 public with sharing class CCCController {
 
-    private static final String OPENAI_ENDPOINT = 'https://api.openai.com/v1/chat/completions';
-    private static final String OPENAI_MODEL    = 'gpt-4o';
-    private static final Integer TIMEOUT_MS     = 8000;
+    private static final String OPENAI_ENDPOINT  = 'https://api.openai.com/v1/chat/completions';
+    private static final String WHISPER_ENDPOINT = 'https://api.openai.com/v1/audio/transcriptions';
+    private static final String OPENAI_MODEL     = 'gpt-4o';
+    private static final String WHISPER_MODEL    = 'whisper-1';
+    private static final Integer TIMEOUT_MS      = 30000;
 
     private static final String SYSTEM_PROMPT =
         'You are a structured data extractor for a fleet maintenance system.\n\n' +
@@ -17,39 +19,28 @@ public with sharing class CCCController {
         '- Do not invent or infer information not present in the input\n' +
         '- Return only valid JSON, no preamble or explanation';
 
-    /**
-     * Called by the cccCapture LWC. Returns extracted { complaint, cause, correction }
-     * so the component can display them without a record refresh.
-     *
-     * Callout ordering: callout happens before any DML — satisfies Salesforce's
-     * "no callout after DML" rule. Raw input is persisted in both success and error paths.
-     */
+    // ── v1.0 text path ───────────────────────────────────────────────────────
+
     @AuraEnabled
     public static Map<String, String> submitCCC(String workOrderId, String rawInput) {
-        if (String.isBlank(workOrderId)) {
-            throw new AuraHandledException('Work Order ID is required.');
-        }
-        if (String.isBlank(rawInput)) {
-            throw new AuraHandledException('Input text is required.');
-        }
+        if (String.isBlank(workOrderId)) throw new AuraHandledException('Work Order ID is required.');
+        if (String.isBlank(rawInput))    throw new AuraHandledException('Input text is required.');
 
         String apiKey    = getApiKey();
         String promptLog = '[SYSTEM PROMPT]\n' + SYSTEM_PROMPT + '\n\n[USER INPUT]\n' + rawInput;
 
-        HttpRequest  req = buildRequest(apiKey, rawInput);
+        HttpRequest  req = buildChatRequest(apiKey, rawInput);
         HttpResponse res;
         try {
             res = new Http().send(req);
         } catch (CalloutException e) {
-            persistRawInput(workOrderId, rawInput, promptLog, null);
+            persistRawInput(workOrderId, rawInput, promptLog, null, null);
             throw new AuraHandledException('LLM connection failed — raw input saved. (' + e.getMessage() + ')');
         }
 
         if (res.getStatusCode() != 200) {
-            persistRawInput(workOrderId, rawInput, promptLog, res.getBody());
-            throw new AuraHandledException(
-                'LLM returned HTTP ' + res.getStatusCode() + ' — raw input saved.'
-            );
+            persistRawInput(workOrderId, rawInput, promptLog, res.getBody(), null);
+            throw new AuraHandledException('LLM returned HTTP ' + res.getStatusCode() + ' — raw input saved.');
         }
 
         Map<String, String> ccc = parseResponse(res.getBody());
@@ -57,6 +48,79 @@ public with sharing class CCCController {
         update new WorkOrder(
             Id                  = workOrderId,
             CCC_Raw_Input__c    = rawInput,
+            CCC_Prompt_Log__c   = promptLog,
+            CCC_Response_Log__c = res.getBody(),
+            CCC_Complaint__c    = ccc.get('complaint'),
+            CCC_Cause__c        = ccc.get('cause'),
+            CCC_Correction__c   = ccc.get('correction')
+        );
+
+        return ccc;
+    }
+
+    // ── v1.1 voice path ──────────────────────────────────────────────────────
+
+    /**
+     * Step 1 of the voice path: transcribe audio only.
+     * LWC passes base64-encoded audio; returns the transcript string.
+     * No DML — caller decides whether to proceed to extraction.
+     */
+    @AuraEnabled
+    public static String transcribeAudio(String workOrderId, String base64Audio, String mimeType) {
+        if (String.isBlank(workOrderId)) throw new AuraHandledException('Work Order ID is required.');
+        if (String.isBlank(base64Audio)) throw new AuraHandledException('Audio data is required.');
+
+        String apiKey = getApiKey();
+        Blob   audio  = EncodingUtil.base64Decode(base64Audio);
+
+        HttpRequest  req = buildWhisperRequest(apiKey, audio, mimeType);
+        HttpResponse res;
+        try {
+            res = new Http().send(req);
+        } catch (CalloutException e) {
+            throw new AuraHandledException('Transcription connection failed. (' + e.getMessage() + ')');
+        }
+
+        if (res.getStatusCode() != 200) {
+            throw new AuraHandledException('Whisper returned HTTP ' + res.getStatusCode());
+        }
+
+        return parseTranscript(res.getBody());
+    }
+
+    /**
+     * Step 2 of the voice path (review mode): extract CCC from a transcript
+     * that the technician has already reviewed.
+     * Also used as the single call for the fast (no-review) voice path.
+     */
+    @AuraEnabled
+    public static Map<String, String> extractCCCFromTranscript(String workOrderId, String transcript) {
+        if (String.isBlank(workOrderId)) throw new AuraHandledException('Work Order ID is required.');
+        if (String.isBlank(transcript))  throw new AuraHandledException('Transcript is required.');
+
+        String apiKey    = getApiKey();
+        String promptLog = '[SYSTEM PROMPT]\n' + SYSTEM_PROMPT + '\n\n[USER INPUT]\n' + transcript;
+
+        HttpRequest  req = buildChatRequest(apiKey, transcript);
+        HttpResponse res;
+        try {
+            res = new Http().send(req);
+        } catch (CalloutException e) {
+            persistTranscript(workOrderId, transcript);
+            throw new AuraHandledException('LLM connection failed — transcript saved. (' + e.getMessage() + ')');
+        }
+
+        if (res.getStatusCode() != 200) {
+            persistTranscript(workOrderId, transcript);
+            throw new AuraHandledException('LLM returned HTTP ' + res.getStatusCode() + ' — transcript saved.');
+        }
+
+        Map<String, String> ccc = parseResponse(res.getBody());
+
+        update new WorkOrder(
+            Id                  = workOrderId,
+            CCC_Raw_Input__c    = transcript,
+            CCC_Transcript__c   = transcript,
             CCC_Prompt_Log__c   = promptLog,
             CCC_Response_Log__c = res.getBody(),
             CCC_Complaint__c    = ccc.get('complaint'),
@@ -79,14 +143,14 @@ public with sharing class CCCController {
         return cfg.OpenAI_Key__c;
     }
 
-    private static HttpRequest buildRequest(String apiKey, String rawInput) {
+    private static HttpRequest buildChatRequest(String apiKey, String userText) {
         Map<String, Object> requestBody = new Map<String, Object>{
             'model'           => OPENAI_MODEL,
             'temperature'     => 0,
             'response_format' => new Map<String, String>{ 'type' => 'json_object' },
             'messages'        => new List<Object>{
                 new Map<String, String>{ 'role' => 'system', 'content' => SYSTEM_PROMPT },
-                new Map<String, String>{ 'role' => 'user',   'content' => rawInput }
+                new Map<String, String>{ 'role' => 'user',   'content' => userText }
             }
         };
 
@@ -98,6 +162,53 @@ public with sharing class CCCController {
         req.setTimeout(TIMEOUT_MS);
         req.setBody(JSON.serialize(requestBody));
         return req;
+    }
+
+    private static HttpRequest buildWhisperRequest(String apiKey, Blob audio, String mimeType) {
+        String boundary = '----CCC' + String.valueOf(Datetime.now().getTime());
+        String filename = 'audio.' + extensionForMime(mimeType);
+
+        // Multipart body: preamble + binary audio + model field + close
+        String preamble =
+            '--' + boundary + '\r\n' +
+            'Content-Disposition: form-data; name="file"; filename="' + filename + '"\r\n' +
+            'Content-Type: ' + mimeType + '\r\n\r\n';
+        String middle =
+            '\r\n--' + boundary + '\r\n' +
+            'Content-Disposition: form-data; name="model"\r\n\r\n' +
+            WHISPER_MODEL +
+            '\r\n--' + boundary + '--';
+
+        Blob body = Blob.valueOf(preamble);
+        body = BlobUtils.concat(body, audio);
+        body = BlobUtils.concat(body, Blob.valueOf(middle));
+
+        HttpRequest req = new HttpRequest();
+        req.setEndpoint(WHISPER_ENDPOINT);
+        req.setMethod('POST');
+        req.setHeader('Authorization', 'Bearer ' + apiKey);
+        req.setHeader('Content-Type', 'multipart/form-data; boundary=' + boundary);
+        req.setTimeout(TIMEOUT_MS);
+        req.setBodyAsBlob(body);
+        return req;
+    }
+
+    private static String extensionForMime(String mimeType) {
+        if (String.isBlank(mimeType)) return 'mp4';
+        if (mimeType.contains('webm')) return 'webm';
+        if (mimeType.contains('ogg'))  return 'ogg';
+        if (mimeType.contains('wav'))  return 'wav';
+        if (mimeType.contains('mp3'))  return 'mp3';
+        return 'mp4';
+    }
+
+    private static String parseTranscript(String responseBody) {
+        try {
+            Map<String, Object> root = (Map<String, Object>) JSON.deserializeUntyped(responseBody);
+            return (String) root.get('text');
+        } catch (Exception e) {
+            throw new AuraHandledException('Failed to parse Whisper response: ' + e.getMessage());
+        }
     }
 
     private static Map<String, String> parseResponse(String responseBody) {
@@ -121,16 +232,24 @@ public with sharing class CCCController {
         }
     }
 
-    private static void persistRawInput(String workOrderId, String rawInput, String promptLog, String responseLog) {
+    private static void persistRawInput(String workOrderId, String rawInput, String promptLog, String responseLog, String transcript) {
         try {
             update new WorkOrder(
                 Id                  = workOrderId,
                 CCC_Raw_Input__c    = rawInput,
                 CCC_Prompt_Log__c   = promptLog,
-                CCC_Response_Log__c = responseLog
+                CCC_Response_Log__c = responseLog,
+                CCC_Transcript__c   = transcript
             );
-        } catch (Exception e) {
-            // Best-effort — do not mask the upstream error
-        }
+        } catch (Exception e) { }
+    }
+
+    private static void persistTranscript(String workOrderId, String transcript) {
+        try {
+            update new WorkOrder(
+                Id                = workOrderId,
+                CCC_Transcript__c = transcript
+            );
+        } catch (Exception e) { }
     }
 }
