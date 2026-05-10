@@ -2,106 +2,100 @@
     <lightning-card title="CCC Capture" icon-name="standard:work_order_item">
         <div class="slds-card__body slds-card__body_inner">
 
-            <!-- IDLE: choose mode before recording -->
+            <!-- IDLE: single Record button -->
             <template lwc:if={isIdle}>
                 <p class="slds-text-body_regular slds-m-bottom_medium">
-                    Record your CCC narrative, then choose how to proceed.
+                    Record your maintenance narrative. You'll choose where to send it after transcription.
                 </p>
-                <div class="slds-grid slds-gutters slds-wrap">
-                    <div class="slds-col slds-size_1-of-1 slds-medium-size_1-of-2 slds-m-bottom_small">
-                        <lightning-button
-                            label="Review Transcript First"
-                            variant="neutral"
-                            icon-name="utility:record"
-                            onclick={handleRecordWithReview}
-                            class="slds-button_stretch">
-                        </lightning-button>
-                        <p class="slds-text-body_small slds-text-color_weak slds-m-top_x-small">
-                            See what was heard before extracting CCC
-                        </p>
-                    </div>
-                    <div class="slds-col slds-size_1-of-1 slds-medium-size_1-of-2 slds-m-bottom_small">
-                        <lightning-button
-                            label="Record &amp; Extract CCC"
-                            variant="brand"
-                            icon-name="utility:record"
-                            onclick={handleRecordDirect}
-                            class="slds-button_stretch">
-                        </lightning-button>
-                        <p class="slds-text-body_small slds-text-color_weak slds-m-top_x-small">
-                            Transcribe and extract in one step
-                        </p>
-                    </div>
-                </div>
+                <lightning-button
+                    label="Record"
+                    variant="brand"
+                    icon-name="utility:record"
+                    onclick={handleRecord}>
+                </lightning-button>
             </template>
 
             <!-- RECORDING -->
             <template lwc:elseif={isRecording}>
-                <div class="slds-align_absolute-center slds-p-around_large slds-has-flexi-truncate">
+                <div class="slds-align_absolute-center slds-p-around_large">
                     <div class="slds-text-align_center">
-                        <div class="slds-m-bottom_medium">
-                            <lightning-icon
-                                icon-name="utility:record"
-                                variant="error"
-                                size="large">
-                            </lightning-icon>
-                        </div>
+                        <lightning-icon icon-name="utility:record" variant="error" size="large"
+                            class="slds-m-bottom_medium">
+                        </lightning-icon>
                         <p class="slds-text-heading_small slds-text-color_error slds-m-bottom_large">
                             Recording…
                         </p>
-                        <lightning-button
-                            label="Stop Recording"
-                            variant="destructive"
+                        <lightning-button label="Stop Recording" variant="destructive"
                             onclick={handleStopRecording}>
                         </lightning-button>
                     </div>
                 </div>
             </template>
 
-            <!-- TRANSCRIBING spinner -->
+            <!-- TRANSCRIBING -->
             <template lwc:elseif={isTranscribing}>
                 <div class="slds-align_absolute-center slds-p-around_large">
-                    <lightning-spinner alternative-text="Transcribing audio…" size="medium"></lightning-spinner>
+                    <lightning-spinner alternative-text="Transcribing…" size="medium"></lightning-spinner>
                     <p class="slds-m-top_large slds-text-align_center slds-text-color_weak">
                         Transcribing audio…
                     </p>
                 </div>
             </template>
 
-            <!-- TRANSCRIPT_REVIEW -->
-            <template lwc:elseif={isTranscriptReview}>
+            <!-- TRANSCRIPT_READY: review transcript, pick LLM path -->
+            <template lwc:elseif={isTranscriptReady}>
                 <p class="slds-text-title_caps slds-m-bottom_x-small">Transcript</p>
                 <lightning-textarea
                     label=""
                     value={transcript}
                     onchange={handleTranscriptChange}
                     max-length="32768"
-                    class="slds-m-bottom_medium">
+                    class="slds-m-bottom_small">
                 </lightning-textarea>
                 <p class="slds-text-body_small slds-text-color_weak slds-m-bottom_medium">
-                    Review and edit if needed, then extract.
+                    Review and edit if needed, then choose your extraction path.
                 </p>
-                <div class="slds-button-group">
-                    <lightning-button
-                        label="Extract CCC"
-                        variant="brand"
-                        onclick={handleExtractCCC}
-                        disabled={isTranscriptBlank}>
-                    </lightning-button>
-                    <lightning-button
-                        label="Re-record"
-                        variant="neutral"
-                        onclick={handleReRecord}>
+                <div class="slds-grid slds-gutters slds-wrap">
+                    <div class="slds-col slds-size_1-of-1 slds-small-size_1-of-3 slds-m-bottom_x-small">
+                        <lightning-button
+                            label="→ OpenAI"
+                            variant="brand"
+                            onclick={handleSendOpenAI}
+                            disabled={isTranscriptBlank}
+                            class="slds-button_stretch">
+                        </lightning-button>
+                    </div>
+                    <div class="slds-col slds-size_1-of-1 slds-small-size_1-of-3 slds-m-bottom_x-small">
+                        <lightning-button
+                            label="→ Agentforce"
+                            variant="brand-outline"
+                            onclick={handleSendAgentforce}
+                            disabled={isTranscriptBlank}
+                            class="slds-button_stretch">
+                        </lightning-button>
+                    </div>
+                    <div class="slds-col slds-size_1-of-1 slds-small-size_1-of-3 slds-m-bottom_x-small">
+                        <lightning-button
+                            label="→ Both"
+                            variant="success"
+                            onclick={handleSendBoth}
+                            disabled={isTranscriptBlank}
+                            class="slds-button_stretch">
+                        </lightning-button>
+                    </div>
+                </div>
+                <div class="slds-m-top_x-small">
+                    <lightning-button label="Re-record" variant="neutral" onclick={handleReset}>
                     </lightning-button>
                 </div>
             </template>
 
-            <!-- EXTRACTING spinner -->
+            <!-- EXTRACTING -->
             <template lwc:elseif={isExtracting}>
                 <div class="slds-align_absolute-center slds-p-around_large">
-                    <lightning-spinner alternative-text="Extracting CCC…" size="medium"></lightning-spinner>
+                    <lightning-spinner alternative-text="Extracting…" size="medium"></lightning-spinner>
                     <p class="slds-m-top_large slds-text-align_center slds-text-color_weak">
-                        Extracting Complaint, Cause &amp; Correction…
+                        {extractingLabel}
                     </p>
                 </div>
             </template>
@@ -109,29 +103,76 @@
             <!-- SUCCESS -->
             <template lwc:elseif={isSuccess}>
                 <div class="slds-m-bottom_small">
-                    <lightning-icon
-                        icon-name="utility:success"
-                        variant="success"
-                        size="x-small"
+                    <lightning-icon icon-name="utility:success" variant="success" size="x-small"
                         class="slds-m-right_x-small">
                     </lightning-icon>
                     <span class="slds-text-color_success slds-text-body_regular">
                         CCC saved to Work Order
                     </span>
                 </div>
-                <dl class="slds-dl_horizontal slds-m-top_medium">
-                    <dt class="slds-dl_horizontal__label slds-text-title_caps">Complaint</dt>
-                    <dd class="slds-dl_horizontal__detail">{result.complaint}</dd>
 
-                    <dt class="slds-dl_horizontal__label slds-text-title_caps">Cause</dt>
-                    <dd class="slds-dl_horizontal__detail">{result.cause}</dd>
+                <!-- Single provider result -->
+                <template lwc:if={isSuccessSingle}>
+                    <p class="slds-text-title_caps slds-m-top_medium slds-m-bottom_x-small">
+                        {providerLabel}
+                    </p>
+                    <dl class="slds-dl_horizontal">
+                        <dt class="slds-dl_horizontal__label slds-text-title_caps">Complaint</dt>
+                        <dd class="slds-dl_horizontal__detail">{singleComplaint}</dd>
+                        <dt class="slds-dl_horizontal__label slds-text-title_caps">Cause</dt>
+                        <dd class="slds-dl_horizontal__detail">{singleCause}</dd>
+                        <dt class="slds-dl_horizontal__label slds-text-title_caps">Correction</dt>
+                        <dd class="slds-dl_horizontal__detail">{singleCorrection}</dd>
+                    </dl>
+                </template>
 
-                    <dt class="slds-dl_horizontal__label slds-text-title_caps">Correction</dt>
-                    <dd class="slds-dl_horizontal__detail">{result.correction}</dd>
-                </dl>
+                <!-- Both providers side-by-side -->
+                <template lwc:else>
+                    <div class="slds-grid slds-gutters slds-wrap slds-m-top_medium">
+                        <!-- OpenAI column -->
+                        <div class="slds-col slds-size_1-of-1 slds-medium-size_1-of-2 slds-m-bottom_small">
+                            <div class="slds-box slds-theme_shade">
+                                <p class="slds-text-title_caps slds-m-bottom_x-small">OpenAI GPT-4o</p>
+                                <dl class="slds-dl_horizontal">
+                                    <dt class="slds-dl_horizontal__label">Complaint</dt>
+                                    <dd class="slds-dl_horizontal__detail">{openaiComplaint}</dd>
+                                    <dt class="slds-dl_horizontal__label">Cause</dt>
+                                    <dd class="slds-dl_horizontal__detail">{openaiCause}</dd>
+                                    <dt class="slds-dl_horizontal__label">Correction</dt>
+                                    <dd class="slds-dl_horizontal__detail">{openaiCorrection}</dd>
+                                </dl>
+                            </div>
+                        </div>
+                        <!-- Agentforce column -->
+                        <div class="slds-col slds-size_1-of-1 slds-medium-size_1-of-2 slds-m-bottom_small">
+                            <div class="slds-box">
+                                <p class="slds-text-title_caps slds-m-bottom_x-small">Agentforce</p>
+                                <template lwc:if={agentforceError}>
+                                    <div class="slds-notify slds-notify_alert slds-alert_warning" role="alert">
+                                        <lightning-icon icon-name="utility:warning" size="x-small"
+                                            class="slds-m-right_x-small">
+                                        </lightning-icon>
+                                        Agentforce path failed — set up the CCC_Extractor template in Prompt Builder.
+                                    </div>
+                                </template>
+                                <template lwc:else>
+                                    <dl class="slds-dl_horizontal">
+                                        <dt class="slds-dl_horizontal__label">Complaint</dt>
+                                        <dd class="slds-dl_horizontal__detail">{afComplaint}</dd>
+                                        <dt class="slds-dl_horizontal__label">Cause</dt>
+                                        <dd class="slds-dl_horizontal__detail">{afCause}</dd>
+                                        <dt class="slds-dl_horizontal__label">Correction</dt>
+                                        <dd class="slds-dl_horizontal__detail">{afCorrection}</dd>
+                                    </dl>
+                                </template>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+
                 <div class="slds-m-top_medium slds-button-group">
-                    <lightning-button label="Done"      variant="brand"    onclick={handleDone}></lightning-button>
-                    <lightning-button label="New Entry" variant="neutral"  onclick={handleReset}></lightning-button>
+                    <lightning-button label="Done"      variant="brand"   onclick={handleDone}></lightning-button>
+                    <lightning-button label="New Entry" variant="neutral" onclick={handleReset}></lightning-button>
                 </div>
             </template>
 
@@ -143,7 +184,8 @@
                     {errorMessage}
                 </div>
                 <div class="slds-m-top_medium">
-                    <lightning-button label="Try Again" variant="neutral" onclick={handleReset}></lightning-button>
+                    <lightning-button label="Try Again" variant="neutral" onclick={handleReset}>
+                    </lightning-button>
                 </div>
             </template>
 

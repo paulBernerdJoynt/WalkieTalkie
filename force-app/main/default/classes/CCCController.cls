@@ -1,10 +1,11 @@
 public with sharing class CCCController {
 
-    private static final String OPENAI_ENDPOINT  = 'https://api.openai.com/v1/chat/completions';
-    private static final String WHISPER_ENDPOINT = 'https://api.openai.com/v1/audio/transcriptions';
-    private static final String OPENAI_MODEL     = 'gpt-4o';
-    private static final String WHISPER_MODEL    = 'whisper-1';
-    private static final Integer TIMEOUT_MS      = 30000;
+    private static final String OPENAI_ENDPOINT       = 'https://api.openai.com/v1/chat/completions';
+    private static final String WHISPER_ENDPOINT      = 'https://api.openai.com/v1/audio/transcriptions';
+    private static final String OPENAI_MODEL          = 'gpt-4o';
+    private static final String WHISPER_MODEL         = 'whisper-1';
+    private static final String AGENTFORCE_TEMPLATE   = 'CCC_Extractor';
+    private static final Integer TIMEOUT_MS           = 30000;
 
     private static final String SYSTEM_PROMPT =
         'You are a structured data extractor for a fleet maintenance system.\n\n' +
@@ -18,6 +19,81 @@ public with sharing class CCCController {
         '- If a field cannot be determined from the input, return null for that field\n' +
         '- Do not invent or infer information not present in the input\n' +
         '- Return only valid JSON, no preamble or explanation';
+
+    // ── v1.2 unified voice path ───────────────────────────────────────────────
+
+    /**
+     * Primary method for the v1.2 LWC. Called after the user reviews the Whisper
+     * transcript and taps one of the three LLM buttons.
+     *
+     * path: 'openai' | 'agentforce' | 'both'
+     *
+     * Returns a flat map with provider-prefixed keys so the LWC can render
+     * side-by-side results without a second round-trip.
+     *
+     * For 'both': if Agentforce fails (e.g. template not yet configured), the
+     * OpenAI result is still written and 'af_error' is returned in the map.
+     */
+    @AuraEnabled
+    public static Map<String, String> extractCCC(String workOrderId, String transcript, String path) {
+        if (String.isBlank(workOrderId)) throw new AuraHandledException('Work Order ID is required.');
+        if (String.isBlank(transcript))  throw new AuraHandledException('Transcript is required.');
+        if (String.isBlank(path))        throw new AuraHandledException('Path is required.');
+
+        WorkOrder wo = new WorkOrder(
+            Id                    = workOrderId,
+            CCC_Raw_Transcript__c = transcript
+        );
+
+        Map<String, String> result = new Map<String, String>{ 'path' => path };
+
+        // HTTP callouts must happen before any DML
+        if (path == 'openai' || path == 'both') {
+            String apiKey    = getApiKey();
+            String promptLog = '[SYSTEM PROMPT]\n' + SYSTEM_PROMPT + '\n\n[USER INPUT]\n' + transcript;
+            HttpRequest  req = buildChatRequest(apiKey, transcript);
+            HttpResponse res;
+            try {
+                res = new Http().send(req);
+            } catch (CalloutException e) {
+                throw new AuraHandledException('OpenAI connection failed. (' + e.getMessage() + ')');
+            }
+            if (res.getStatusCode() != 200) {
+                throw new AuraHandledException('OpenAI returned HTTP ' + res.getStatusCode());
+            }
+            Map<String, String> oai = parseResponse(res.getBody());
+            wo.CCC_Prompt_Log__c   = promptLog;
+            wo.CCC_Response_Log__c = res.getBody();
+            wo.CCC_Complaint__c    = oai.get('complaint');
+            wo.CCC_Cause__c        = oai.get('cause');
+            wo.CCC_Correction__c   = oai.get('correction');
+            result.put('openai_complaint',  oai.get('complaint'));
+            result.put('openai_cause',      oai.get('cause'));
+            result.put('openai_correction', oai.get('correction'));
+        }
+
+        // Invocable.Action (Einstein LLM Gateway — not a counted HTTP callout)
+        if (path == 'agentforce' || path == 'both') {
+            try {
+                Map<String, String> af = callAgentforce(transcript);
+                wo.AF_Complaint__c  = af.get('complaint');
+                wo.AF_Cause__c      = af.get('cause');
+                wo.AF_Correction__c = af.get('correction');
+                result.put('af_complaint',  af.get('complaint'));
+                result.put('af_cause',      af.get('cause'));
+                result.put('af_correction', af.get('correction'));
+            } catch (Exception e) {
+                if (path == 'agentforce') {
+                    throw new AuraHandledException(e.getMessage());
+                }
+                // 'both' path: record the error but still save OpenAI results
+                result.put('af_error', e.getMessage());
+            }
+        }
+
+        update wo;
+        return result;
+    }
 
     // ── v1.0 text path ───────────────────────────────────────────────────────
 
@@ -230,6 +306,52 @@ public with sharing class CCCController {
         } catch (Exception e) {
             throw new AuraHandledException('Failed to parse LLM response: ' + e.getMessage());
         }
+    }
+
+    private static Map<String, String> callAgentforce(String transcript) {
+        Invocable.Action action = Invocable.Action.createCustomAction(
+            'promptTemplate',
+            AGENTFORCE_TEMPLATE
+        );
+        action.setInvocationParameter('transcript', transcript);
+
+        List<Invocable.Action.Result> results = action.invoke();
+
+        if (results == null || results.isEmpty() || !results[0].isSuccess()) {
+            String detail = (results != null && !results.isEmpty() && results[0].getErrors() != null)
+                ? String.valueOf(results[0].getErrors())
+                : 'No results returned';
+            throw new AuraHandledException(
+                'Agentforce Prompt Builder invocation failed: ' + detail +
+                '. Ensure the CCC_Extractor template is configured in Setup → Prompt Builder.'
+            );
+        }
+
+        String response = (String) results[0].getOutputParameters().get('value');
+        return parseCCCResponse(response);
+    }
+
+    private static Map<String, String> parseCCCResponse(String response) {
+        Map<String, String> ccc = new Map<String, String>{
+            'complaint'  => null,
+            'cause'      => null,
+            'correction' => null
+        };
+        if (String.isBlank(response)) return ccc;
+        for (String line : response.split('\n')) {
+            line = line.trim();
+            if (line.startsWithIgnoreCase('COMPLAINT:')) {
+                String val = line.substringAfter(':').trim();
+                ccc.put('complaint', val.equalsIgnoreCase('null') ? null : val);
+            } else if (line.startsWithIgnoreCase('CAUSE:')) {
+                String val = line.substringAfter(':').trim();
+                ccc.put('cause', val.equalsIgnoreCase('null') ? null : val);
+            } else if (line.startsWithIgnoreCase('CORRECTION:')) {
+                String val = line.substringAfter(':').trim();
+                ccc.put('correction', val.equalsIgnoreCase('null') ? null : val);
+            }
+        }
+        return ccc;
     }
 
     private static void persistRawInput(String workOrderId, String rawInput, String promptLog, String responseLog, String transcript) {
