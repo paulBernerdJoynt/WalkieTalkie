@@ -183,7 +183,11 @@
                     </lightning-icon>
                     {errorMessage}
                 </div>
-                <div class="slds-m-top_medium">
+                <div class="slds-m-top_medium slds-button-group">
+                    <template lwc:if={attemptId}>
+                        <lightning-button label="View Attempt" variant="brand" onclick={handleViewAttempt}>
+                        </lightning-button>
+                    </template>
                     <lightning-button label="Try Again" variant="neutral" onclick={handleReset}>
                     </lightning-button>
                 </div>

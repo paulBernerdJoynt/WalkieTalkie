@@ -1,5 +1,7 @@
 import { LightningElement, api, track } from 'lwc';
 import { CloseActionScreenEvent } from 'lightning/actions';
+import { ShowToastEvent } from 'lightning/platformShowToastEvent';
+import { NavigationMixin } from 'lightning/navigation';
 import transcribeAudio from '@salesforce/apex/CCCController.transcribeAudio';
 import extractCCC      from '@salesforce/apex/CCCController.extractCCC';
 
@@ -15,11 +17,12 @@ const STATE = {
 
 const NULL_LABEL = '(not identified)';
 
-export default class CccCapture extends LightningElement {
+export default class CccCapture extends NavigationMixin(LightningElement) {
     @api   recordId;
     @track state        = STATE.IDLE;
     @track transcript   = '';
     @track errorMessage = '';
+    @track attemptId    = null;
 
     _path          = null;
     _result        = {};
@@ -119,6 +122,18 @@ export default class CccCapture extends LightningElement {
         this._reset();
     }
 
+    handleViewAttempt() {
+        if (this.attemptId) {
+            this[NavigationMixin.Navigate]({
+                type: 'standard__recordPage',
+                attributes: {
+                    recordId: this.attemptId,
+                    actionName: 'view'
+                }
+            });
+        }
+    }
+
     // ── Private: recording lifecycle ──────────────────────────────────────────
 
     async _startRecording() {
@@ -159,6 +174,7 @@ export default class CccCapture extends LightningElement {
 
             if (!this.transcript || !this.transcript.trim()) {
                 this.errorMessage = 'No speech detected. Please try again.';
+                this._showErrorToast(this.errorMessage);
                 this.state = STATE.ERROR;
                 return;
             }
@@ -167,6 +183,7 @@ export default class CccCapture extends LightningElement {
         } catch (err) {
             this.errorMessage =
                 (err.body && err.body.message) || err.message || 'Transcription failed.';
+            this._showErrorToast(this.errorMessage);
             this.state = STATE.ERROR;
         }
     }
@@ -184,6 +201,7 @@ export default class CccCapture extends LightningElement {
         } catch (err) {
             this.errorMessage =
                 (err.body && err.body.message) || err.message || 'Extraction failed.';
+            this._showErrorToast(this.errorMessage);
             this.state = STATE.ERROR;
         }
     }
@@ -195,7 +213,40 @@ export default class CccCapture extends LightningElement {
         this._path          = null;
         this.transcript     = '';
         this.errorMessage   = '';
+        this.attemptId      = null;
         this.state          = STATE.IDLE;
+    }
+
+    /**
+     * Extract attempt ID from error message if present.
+     * Error messages are formatted as: "Message. Attempt: <attemptId>" or "Message Attempt: <attemptId>"
+     */
+    _extractAttemptId(errorMessage) {
+        const match = errorMessage.match(/Attempt:\s+([a-zA-Z0-9]{15,18})/);
+        return match ? match[1] : null;
+    }
+
+    /**
+     * Show error toast with optional navigation to attempt record
+     */
+    _showErrorToast(errorMessage) {
+        this.attemptId = this._extractAttemptId(errorMessage);
+
+        if (this.attemptId) {
+            this.dispatchEvent(new ShowToastEvent({
+                title: 'Extraction Failed',
+                message: 'View the attempt to see what was captured.',
+                variant: 'error',
+                mode: 'dismissable'
+            }));
+        } else {
+            this.dispatchEvent(new ShowToastEvent({
+                title: 'Extraction Failed',
+                message: errorMessage,
+                variant: 'error',
+                mode: 'dismissable'
+            }));
+        }
     }
 
     // ── Private: blob → base64 ────────────────────────────────────────────────

@@ -7,17 +7,21 @@ public with sharing class CCCController {
     private static final String AGENTFORCE_TEMPLATE   = 'CCC_Extractor';
     private static final Integer TIMEOUT_MS           = 30000;
 
-    private static final String SYSTEM_PROMPT =
-        'You are a structured data extractor for a fleet maintenance system.\n\n' +
-        'A technician has provided a free-form description of work performed on a vehicle.\n' +
+    // v1.3: System prompt is now fetched from CCC_Prompt_Template__c (active version)
+    // This constant is kept for backward compatibility during transition
+    private static final String SYSTEM_PROMPT_FALLBACK =
+        'You are a structured data extractor for a fleet maintenance diagnostic system.\n\n' +
+        'A technician has provided a narrative description of work performed on a vehicle.\n' +
         'Extract and return ONLY a JSON object with the following fields:\n' +
-        '- complaint: What the technician or customer observed (the symptom)\n' +
-        '- cause: What was identified as the root cause of the issue\n' +
-        '- correction: What action was taken to resolve the issue\n\n' +
-        'Rules:\n' +
-        '- Remove filler words, hesitations, and repetition\n' +
+        '- complaint: What the technician or customer observed (the symptom or presenting issue)\n' +
+        '- cause: The identified root cause of the problem\n' +
+        '- correction: The action taken to resolve the issue\n\n' +
+        'Requirements:\n' +
+        '- Write each field as complete, professional sentences (typically 2-3+ sentences)\n' +
+        '- Include specific technical detail: part names, measurements, symptoms observed, diagnostic steps taken, actions performed, and confirmation of resolution where mentioned\n' +
+        '- Capture the full diagnostic narrative; do not abbreviate to single phrases or summaries\n' +
         '- If a field cannot be determined from the input, return null for that field\n' +
-        '- Do not invent or infer information not present in the input\n' +
+        '- Do not invent or infer information not present in the technician\'s description\n' +
         '- Return only valid JSON, no preamble or explanation';
 
     // ── v1.2 unified voice path ───────────────────────────────────────────────
@@ -47,19 +51,42 @@ public with sharing class CCCController {
 
         Map<String, String> result = new Map<String, String>{ 'path' => path };
 
+        String systemPrompt = getActivePrompt();
+
+        // Get active prompt template for reference
+        CCC_Prompt_Template__c activeTemplate = null;
+        try {
+            List<CCC_Prompt_Template__c> templates = [
+                SELECT Id FROM CCC_Prompt_Template__c
+                WHERE Is_Active__c = true
+                LIMIT 1
+            ];
+            if (!templates.isEmpty()) {
+                activeTemplate = templates[0];
+            }
+        } catch (Exception e) { }
+
+        // Create attempt record
+        String attemptId = createAttemptRecord(workOrderId, transcript,
+                                              (activeTemplate != null) ? activeTemplate.Id : null);
+
         // HTTP callouts must happen before any DML
         if (path == 'openai' || path == 'both') {
-            String apiKey    = getApiKey();
-            String promptLog = '[SYSTEM PROMPT]\n' + SYSTEM_PROMPT + '\n\n[USER INPUT]\n' + transcript;
-            HttpRequest  req = buildChatRequest(apiKey, transcript);
+            String apiKey = getApiKey();
+            String promptLog = '[SYSTEM PROMPT]\n' + systemPrompt + '\n\n[USER INPUT]\n' + transcript;
+            HttpRequest  req = buildChatRequest(apiKey, systemPrompt, transcript);
             HttpResponse res;
             try {
                 res = new Http().send(req);
             } catch (CalloutException e) {
-                throw new AuraHandledException('OpenAI connection failed. (' + e.getMessage() + ')');
+                updateAttemptWithSTTResult(attemptId, 'Success', null);
+                updateAttemptWithLLMResult(attemptId, 'Failure', 'Network unavailable: ' + e.getMessage(), null, null, null);
+                throw new AuraHandledException('OpenAI connection failed. Attempt: ' + attemptId + ' (' + e.getMessage() + ')');
             }
             if (res.getStatusCode() != 200) {
-                throw new AuraHandledException('OpenAI returned HTTP ' + res.getStatusCode());
+                updateAttemptWithSTTResult(attemptId, 'Success', null);
+                updateAttemptWithLLMResult(attemptId, 'Failure', 'HTTP ' + res.getStatusCode(), null, null, null);
+                throw new AuraHandledException('OpenAI returned HTTP ' + res.getStatusCode() + '. Attempt: ' + attemptId);
             }
             Map<String, String> oai = parseResponse(res.getBody());
             wo.CCC_Prompt_Log__c   = promptLog;
@@ -70,6 +97,10 @@ public with sharing class CCCController {
             result.put('openai_complaint',  oai.get('complaint'));
             result.put('openai_cause',      oai.get('cause'));
             result.put('openai_correction', oai.get('correction'));
+
+            // Log LLM success
+            updateAttemptWithSTTResult(attemptId, 'Success', null);
+            updateAttemptWithLLMResult(attemptId, 'Success', null, oai.get('complaint'), oai.get('cause'), oai.get('correction'));
         }
 
         // Invocable.Action (Einstein LLM Gateway — not a counted HTTP callout)
@@ -103,23 +134,52 @@ public with sharing class CCCController {
         if (String.isBlank(rawInput))    throw new AuraHandledException('Input text is required.');
 
         String apiKey    = getApiKey();
-        String promptLog = '[SYSTEM PROMPT]\n' + SYSTEM_PROMPT + '\n\n[USER INPUT]\n' + rawInput;
+        String systemPrompt = getActivePrompt();
 
-        HttpRequest  req = buildChatRequest(apiKey, rawInput);
+        // Get active prompt template for reference
+        CCC_Prompt_Template__c activeTemplate = null;
+        try {
+            List<CCC_Prompt_Template__c> templates = [
+                SELECT Id FROM CCC_Prompt_Template__c
+                WHERE Is_Active__c = true
+                LIMIT 1
+            ];
+            if (!templates.isEmpty()) {
+                activeTemplate = templates[0];
+            }
+        } catch (Exception e) { }
+
+        // Create attempt record to log this extraction
+        String attemptId = createAttemptRecord(workOrderId, rawInput,
+                                              (activeTemplate != null) ? activeTemplate.Id : null);
+
+        String promptLog = '[SYSTEM PROMPT]\n' + systemPrompt + '\n\n[USER INPUT]\n' + rawInput;
+
+        HttpRequest  req = buildChatRequest(apiKey, systemPrompt, rawInput);
         HttpResponse res;
         try {
             res = new Http().send(req);
         } catch (CalloutException e) {
+            // Log STT as success (it's text input), LLM as failed
+            updateAttemptWithSTTResult(attemptId, 'Success', null);
+            updateAttemptWithLLMResult(attemptId, 'Failure', 'Network unavailable: ' + e.getMessage(), null, null, null);
             persistRawInput(workOrderId, rawInput, promptLog, null, null);
             throw new AuraHandledException('LLM connection failed — raw input saved. (' + e.getMessage() + ')');
         }
 
         if (res.getStatusCode() != 200) {
+            // Log STT as success, LLM as failed
+            updateAttemptWithSTTResult(attemptId, 'Success', null);
+            updateAttemptWithLLMResult(attemptId, 'Failure', 'HTTP ' + res.getStatusCode(), null, null, null);
             persistRawInput(workOrderId, rawInput, promptLog, res.getBody(), null);
-            throw new AuraHandledException('LLM returned HTTP ' + res.getStatusCode() + ' — raw input saved.');
+            throw new AuraHandledException('LLM returned HTTP ' + res.getStatusCode() + ' — raw input saved. Attempt: ' + attemptId);
         }
 
         Map<String, String> ccc = parseResponse(res.getBody());
+
+        // Log LLM success
+        updateAttemptWithSTTResult(attemptId, 'Success', null);
+        updateAttemptWithLLMResult(attemptId, 'Success', null, ccc.get('complaint'), ccc.get('cause'), ccc.get('correction'));
 
         update new WorkOrder(
             Id                  = workOrderId,
@@ -175,23 +235,51 @@ public with sharing class CCCController {
         if (String.isBlank(transcript))  throw new AuraHandledException('Transcript is required.');
 
         String apiKey    = getApiKey();
-        String promptLog = '[SYSTEM PROMPT]\n' + SYSTEM_PROMPT + '\n\n[USER INPUT]\n' + transcript;
+        String systemPrompt = getActivePrompt();
 
-        HttpRequest  req = buildChatRequest(apiKey, transcript);
+        // Get active prompt template for reference
+        CCC_Prompt_Template__c activeTemplate = null;
+        try {
+            List<CCC_Prompt_Template__c> templates = [
+                SELECT Id FROM CCC_Prompt_Template__c
+                WHERE Is_Active__c = true
+                LIMIT 1
+            ];
+            if (!templates.isEmpty()) {
+                activeTemplate = templates[0];
+            }
+        } catch (Exception e) { }
+
+        // Create attempt record
+        String attemptId = createAttemptRecord(workOrderId, transcript,
+                                              (activeTemplate != null) ? activeTemplate.Id : null);
+
+        String promptLog = '[SYSTEM PROMPT]\n' + systemPrompt + '\n\n[USER INPUT]\n' + transcript;
+
+        HttpRequest  req = buildChatRequest(apiKey, systemPrompt, transcript);
         HttpResponse res;
         try {
             res = new Http().send(req);
         } catch (CalloutException e) {
+            // Transcript came from STT (success), but LLM call failed
+            updateAttemptWithSTTResult(attemptId, 'Success', null);
+            updateAttemptWithLLMResult(attemptId, 'Failure', 'Network unavailable: ' + e.getMessage(), null, null, null);
             persistTranscript(workOrderId, transcript);
-            throw new AuraHandledException('LLM connection failed — transcript saved. (' + e.getMessage() + ')');
+            throw new AuraHandledException('LLM connection failed — transcript saved. Attempt: ' + attemptId + ' (' + e.getMessage() + ')');
         }
 
         if (res.getStatusCode() != 200) {
+            updateAttemptWithSTTResult(attemptId, 'Success', null);
+            updateAttemptWithLLMResult(attemptId, 'Failure', 'HTTP ' + res.getStatusCode(), null, null, null);
             persistTranscript(workOrderId, transcript);
-            throw new AuraHandledException('LLM returned HTTP ' + res.getStatusCode() + ' — transcript saved.');
+            throw new AuraHandledException('LLM returned HTTP ' + res.getStatusCode() + ' — transcript saved. Attempt: ' + attemptId);
         }
 
         Map<String, String> ccc = parseResponse(res.getBody());
+
+        // Log success
+        updateAttemptWithSTTResult(attemptId, 'Success', null);
+        updateAttemptWithLLMResult(attemptId, 'Success', null, ccc.get('complaint'), ccc.get('cause'), ccc.get('correction'));
 
         update new WorkOrder(
             Id                  = workOrderId,
@@ -209,6 +297,104 @@ public with sharing class CCCController {
 
     // ── Private helpers ──────────────────────────────────────────────────────
 
+    /**
+     * Get the active CCC_Prompt_Template__c. If none active, return the fallback.
+     */
+    private static String getActivePrompt() {
+        try {
+            List<CCC_Prompt_Template__c> templates = [
+                SELECT Prompt_Text__c
+                FROM CCC_Prompt_Template__c
+                WHERE Is_Active__c = true
+                LIMIT 1
+            ];
+            if (!templates.isEmpty()) {
+                return templates[0].Prompt_Text__c;
+            }
+        } catch (Exception e) {
+            // Query failed; fall through to fallback
+        }
+        return SYSTEM_PROMPT_FALLBACK;
+    }
+
+    /**
+     * Get the STT prompt from Custom Metadata. If not found, return empty string (Whisper is self-prompting).
+     */
+    private static String getSTTPrompt() {
+        try {
+            List<CCC_STT_Prompt__mdt> records = [
+                SELECT Prompt_Text__c
+                FROM CCC_STT_Prompt__mdt
+                WHERE DeveloperName = 'Default'
+                LIMIT 1
+            ];
+            if (!records.isEmpty() && String.isNotBlank(records[0].Prompt_Text__c)) {
+                return records[0].Prompt_Text__c;
+            }
+        } catch (Exception e) {
+            // Query failed; fall through
+        }
+        return '';
+    }
+
+    /**
+     * Create a CCC_LLM_Attempt record with raw input and initial status.
+     * Returns the record ID for later updates.
+     */
+    private static String createAttemptRecord(String workOrderId, String rawInput, String promptTemplateId) {
+        try {
+            CCC_LLM_Attempt__c attempt = new CCC_LLM_Attempt__c(
+                Work_Order__c = workOrderId,
+                Raw_Input__c = rawInput,
+                Prompt_Template_Version__c = promptTemplateId,
+                SpeechToText_Status__c = null,
+                OpenAI_CCC_Status__c = 'Not Attempted'
+            );
+            insert attempt;
+            return attempt.Id;
+        } catch (Exception e) {
+            // If we can't create the record, log the error but don't throw
+            System.debug('Error creating CCC_LLM_Attempt: ' + e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Update the attempt record with STT result.
+     */
+    private static void updateAttemptWithSTTResult(String attemptId, String status, String failureReason) {
+        if (String.isBlank(attemptId)) return;
+        try {
+            update new CCC_LLM_Attempt__c(
+                Id = attemptId,
+                SpeechToText_Status__c = status,
+                SpeechToText_Failure_Reason__c = failureReason
+            );
+        } catch (Exception e) {
+            System.debug('Error updating STT result: ' + e.getMessage());
+        }
+    }
+
+    /**
+     * Update the attempt record with LLM result.
+     */
+    private static void updateAttemptWithLLMResult(String attemptId, String status, String failureReason,
+                                                    String complaint, String cause, String correction) {
+        if (String.isBlank(attemptId)) return;
+        try {
+            update new CCC_LLM_Attempt__c(
+                Id = attemptId,
+                OpenAI_CCC_Status__c = status,
+                OpenAI_Failure_Reason__c = failureReason,
+                Complaint__c = complaint,
+                Cause__c = cause,
+                Correction__c = correction
+            );
+        } catch (Exception e) {
+            System.debug('Error updating LLM result: ' + e.getMessage());
+        }
+    }
+
     private static String getApiKey() {
         CCC_Configuration__c cfg = CCC_Configuration__c.getOrgDefaults();
         if (cfg == null || String.isBlank(cfg.OpenAI_Key__c)) {
@@ -219,13 +405,13 @@ public with sharing class CCCController {
         return cfg.OpenAI_Key__c;
     }
 
-    private static HttpRequest buildChatRequest(String apiKey, String userText) {
+    private static HttpRequest buildChatRequest(String apiKey, String systemPrompt, String userText) {
         Map<String, Object> requestBody = new Map<String, Object>{
             'model'           => OPENAI_MODEL,
             'temperature'     => 0,
             'response_format' => new Map<String, String>{ 'type' => 'json_object' },
             'messages'        => new List<Object>{
-                new Map<String, String>{ 'role' => 'system', 'content' => SYSTEM_PROMPT },
+                new Map<String, String>{ 'role' => 'system', 'content' => systemPrompt },
                 new Map<String, String>{ 'role' => 'user',   'content' => userText }
             }
         };

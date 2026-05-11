@@ -1,0 +1,180 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomObject xmlns="http://soap.sforce.com/2006/04/metadata">
+    <actionOverrides>
+        <actionName>View</actionName>
+        <type>Default</type>
+    </actionOverrides>
+    <description>Audit log of CCC extraction attempts. Tracks every call to STT and LLM with success/failure status and diagnostic info.</description>
+    <enableActivities>false</enableActivities>
+    <enableBulkApi>true</enableBulkApi>
+    <enableFeeds>false</enableFeeds>
+    <enableHistory>true</enableHistory>
+    <enableReports>true</enableReports>
+    <enableSearch>true</enableSearch>
+    <enableSharing>true</enableSharing>
+    <enableStreamingApi>true</enableStreamingApi>
+    <fields>
+        <fullName>Work_Order__c</fullName>
+        <description>Parent Work Order for this extraction attempt</description>
+        <deleteConstraint>Restrict</deleteConstraint>
+        <externalId>false</externalId>
+        <label>Work Order</label>
+        <required>true</required>
+        <trackHistory>true</trackHistory>
+        <type>Lookup</type>
+        <referenceTo>WorkOrder</referenceTo>
+        <relationshipLabel>CCC LLM Attempts</relationshipLabel>
+        <relationshipName>CCC_LLM_Attempts</relationshipName>
+    </fields>
+    <fields>
+        <fullName>Raw_Input__c</fullName>
+        <description>The raw text input (from STT or manual text). Always captured if present.</description>
+        <externalId>false</externalId>
+        <label>Raw Input</label>
+        <length>32768</length>
+        <trackHistory>false</trackHistory>
+        <type>LongTextArea</type>
+        <visibleLines>10</visibleLines>
+    </fields>
+    <fields>
+        <fullName>SpeechToText_Status__c</fullName>
+        <description>Status of the STT (Whisper) API call. Success or Failure.</description>
+        <externalId>false</externalId>
+        <label>Speech To Text Status</label>
+        <required>false</required>
+        <trackHistory>true</trackHistory>
+        <type>Picklist</type>
+        <valueSet>
+            <restricted>true</restricted>
+            <valueSetDefinition>
+                <sorted>false</sorted>
+                <value>
+                    <fullName>Success</fullName>
+                    <default>false</default>
+                    <label>Success</label>
+                </value>
+                <value>
+                    <fullName>Failure</fullName>
+                    <default>false</default>
+                    <label>Failure</label>
+                </value>
+            </valueSetDefinition>
+        </valueSet>
+    </fields>
+    <fields>
+        <fullName>SpeechToText_Failure_Reason__c</fullName>
+        <description>If STT failed, why? e.g., network error, timeout, invalid audio format</description>
+        <externalId>false</externalId>
+        <label>Speech To Text Failure Reason</label>
+        <length>255</length>
+        <trackHistory>false</trackHistory>
+        <type>Text</type>
+        <unique>false</unique>
+    </fields>
+    <fields>
+        <fullName>OpenAI_CCC_Status__c</fullName>
+        <description>Status of the OpenAI LLM call (CCC extraction). Success, Failure, or Not Attempted.</description>
+        <externalId>false</externalId>
+        <label>OpenAI CCC Status</label>
+        <required>false</required>
+        <trackHistory>true</trackHistory>
+        <type>Picklist</type>
+        <valueSet>
+            <restricted>true</restricted>
+            <valueSetDefinition>
+                <sorted>false</sorted>
+                <value>
+                    <fullName>Success</fullName>
+                    <default>false</default>
+                    <label>Success</label>
+                </value>
+                <value>
+                    <fullName>Failure</fullName>
+                    <default>false</default>
+                    <label>Failure</label>
+                </value>
+                <value>
+                    <fullName>Not Attempted</fullName>
+                    <default>false</default>
+                    <label>Not Attempted</label>
+                </value>
+            </valueSetDefinition>
+        </valueSet>
+    </fields>
+    <fields>
+        <fullName>OpenAI_Failure_Reason__c</fullName>
+        <description>If LLM call failed, why? e.g., timeout, network unavailable, rate limit, malformed response</description>
+        <externalId>false</externalId>
+        <label>OpenAI Failure Reason</label>
+        <length>255</length>
+        <trackHistory>false</trackHistory>
+        <type>Text</type>
+        <unique>false</unique>
+    </fields>
+    <fields>
+        <fullName>Complaint__c</fullName>
+        <description>Extracted complaint field from LLM response (if successful)</description>
+        <externalId>false</externalId>
+        <label>Complaint</label>
+        <length>32768</length>
+        <trackHistory>false</trackHistory>
+        <type>LongTextArea</type>
+        <visibleLines>5</visibleLines>
+    </fields>
+    <fields>
+        <fullName>Cause__c</fullName>
+        <description>Extracted cause field from LLM response (if successful)</description>
+        <externalId>false</externalId>
+        <label>Cause</label>
+        <length>32768</length>
+        <trackHistory>false</trackHistory>
+        <type>LongTextArea</type>
+        <visibleLines>5</visibleLines>
+    </fields>
+    <fields>
+        <fullName>Correction__c</fullName>
+        <description>Extracted correction field from LLM response (if successful)</description>
+        <externalId>false</externalId>
+        <label>Correction</label>
+        <length>32768</length>
+        <trackHistory>false</trackHistory>
+        <type>LongTextArea</type>
+        <visibleLines>5</visibleLines>
+    </fields>
+    <fields>
+        <fullName>Prompt_Template_Version__c</fullName>
+        <description>Reference to which CCC Prompt Template version was used for this attempt</description>
+        <externalId>false</externalId>
+        <label>Prompt Template Version</label>
+        <referenceTo>CCC_Prompt_Template__c</referenceTo>
+        <relationshipLabel>LLM Attempts</relationshipLabel>
+        <relationshipName>LLM_Attempts</relationshipName>
+        <type>Lookup</type>
+    </fields>
+    <deploymentStatus>Deployed</deploymentStatus>
+    <label>CCC LLM Attempt</label>
+    <listViews>
+        <fullName>All</fullName>
+        <filterScope>Everything</filterScope>
+        <label>All</label>
+    </listViews>
+    <listViews>
+        <fullName>Failures</fullName>
+        <filterScope>Everything</filterScope>
+        <filters>
+            <field>OpenAI_CCC_Status__c</field>
+            <operation>equals</operation>
+            <value>Failure</value>
+        </filters>
+        <label>Failures</label>
+    </listViews>
+    <nameField>
+        <displayFormat>CCCLLTRY-{0000}</displayFormat>
+        <label>Attempt Number</label>
+        <trackHistory>true</trackHistory>
+        <type>AutoNumber</type>
+    </nameField>
+    <pluralLabel>CCC LLM Attempts</pluralLabel>
+    <searchLayouts/>
+    <sharingModel>ReadWrite</sharingModel>
+</CustomObject>

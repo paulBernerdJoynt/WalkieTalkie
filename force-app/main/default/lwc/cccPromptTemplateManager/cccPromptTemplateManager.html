@@ -1,0 +1,202 @@
+<template>
+    <lightning-card title="CCC Prompt Template Manager" icon-name="standard:config">
+        <div class="slds-m-around_medium">
+            <lightning-spinner if:true={isLoading} alternative-text="Loading..."></lightning-spinner>
+
+            <div if:true={hasTemplates} class="slds-grid slds-wrap">
+                <!-- Template List -->
+                <div class="slds-col slds-size_1-of-3 slds-m-right_medium">
+                    <h3 class="slds-text-heading_small slds-m-bottom_small">Templates</h3>
+                    <ul class="slds-list_bordered">
+                        <template for:each={templatesWithStyle} for:item="template">
+                            <li
+                                key={template.Id}
+                                class="slds-list__item slds-m-bottom_x-small slds-p-around_x-small"
+                                style={template.itemStyle}
+                                onclick={handleSelectTemplate}
+                                data-template-id={template.Id}
+                            >
+                                <div class="slds-text-body_regular">
+                                    <strong>{template.Name}</strong>
+                                </div>
+                                <div class="slds-text-body_small slds-text-color_weak">
+                                    v{template.Version_Number__c}
+                                </div>
+                                <div if:true={template.Is_Active__c} class="slds-m-top_x-small">
+                                    <lightning-badge label="Active" variant="success"></lightning-badge>
+                                </div>
+                            </li>
+                        </template>
+                    </ul>
+                </div>
+
+                <!-- Template Detail/Edit -->
+                <div if:true={selectedTemplate} class="slds-col slds-size_2-of-3">
+                    <div class="slds-grid slds-wrap slds-m-bottom_medium">
+                        <div class="slds-col slds-size_1-of-1">
+                            <lightning-button
+                                if:false={isEditing}
+                                label="Edit"
+                                title="Edit this template"
+                                onclick={handleEdit}
+                                class="slds-m-right_small"
+                            ></lightning-button>
+                            <lightning-button
+                                if:true={canSetActive}
+                                label="Set as Active"
+                                title="Make this the active template"
+                                onclick={handleSetActive}
+                                variant="success"
+                                class="slds-m-right_small"
+                            ></lightning-button>
+                            <lightning-button
+                                if:true={isEditing}
+                                label="Save"
+                                title="Save changes"
+                                onclick={handleSave}
+                                variant="success"
+                                class="slds-m-right_small"
+                            ></lightning-button>
+                            <lightning-button
+                                if:true={isEditing}
+                                label="Cancel"
+                                title="Cancel editing"
+                                onclick={handleCancel}
+                            ></lightning-button>
+                        </div>
+                    </div>
+
+                    <div class="slds-form">
+                        <!-- Template Name -->
+                        <div class="slds-form-element slds-m-bottom_medium">
+                            <label class="slds-form-element__label">
+                                <span class="slds-required">*</span> Template Name
+                            </label>
+                            <div class="slds-form-element__control">
+                                <lightning-input
+                                    if:false={isEditing}
+                                    type="text"
+                                    value={selectedTemplate.Name}
+                                    disabled
+                                ></lightning-input>
+                                <lightning-input
+                                    if:true={isEditing}
+                                    type="text"
+                                    value={editingTemplate.Name}
+                                    data-field="Name"
+                                    onchange={handleFieldChange}
+                                    required
+                                ></lightning-input>
+                            </div>
+                        </div>
+
+                        <!-- Version Number -->
+                        <div class="slds-form-element slds-m-bottom_medium">
+                            <label class="slds-form-element__label">
+                                <span class="slds-required">*</span> Version Number
+                            </label>
+                            <div class="slds-form-element__control">
+                                <lightning-input
+                                    if:false={isEditing}
+                                    type="text"
+                                    value={selectedTemplate.Version_Number__c}
+                                    disabled
+                                ></lightning-input>
+                                <lightning-input
+                                    if:true={isEditing}
+                                    type="text"
+                                    value={editingTemplate.Version_Number__c}
+                                    data-field="Version_Number__c"
+                                    onchange={handleFieldChange}
+                                    placeholder="e.g., 1.3"
+                                    required
+                                ></lightning-input>
+                            </div>
+                        </div>
+
+                        <!-- Active Flag -->
+                        <div class="slds-form-element slds-m-bottom_medium">
+                            <div class="slds-form-element__control">
+                                <lightning-input
+                                    if:false={isEditing}
+                                    type="checkbox"
+                                    checked={selectedTemplate.Is_Active__c}
+                                    label="Is Active"
+                                    disabled
+                                ></lightning-input>
+                                <lightning-input
+                                    if:true={isEditing}
+                                    type="checkbox"
+                                    checked={editingTemplate.Is_Active__c}
+                                    label="Is Active"
+                                    onchange={handleCheckboxChange}
+                                ></lightning-input>
+                            </div>
+                        </div>
+
+                        <!-- Prompt Text -->
+                        <div class="slds-form-element slds-m-bottom_medium">
+                            <label class="slds-form-element__label">
+                                <span class="slds-required">*</span> Prompt Text
+                            </label>
+                            <div class="slds-form-element__control">
+                                <lightning-textarea
+                                    if:false={isEditing}
+                                    value={selectedTemplate.Prompt_Text__c}
+                                    disabled
+                                    rows="15"
+                                ></lightning-textarea>
+                                <lightning-textarea
+                                    if:true={isEditing}
+                                    value={editingTemplate.Prompt_Text__c}
+                                    data-field="Prompt_Text__c"
+                                    onchange={handleFieldChange}
+                                    rows="15"
+                                    required
+                                ></lightning-textarea>
+                            </div>
+                        </div>
+
+                        <!-- Notes -->
+                        <div class="slds-form-element slds-m-bottom_medium">
+                            <label class="slds-form-element__label">Notes</label>
+                            <div class="slds-form-element__control">
+                                <lightning-textarea
+                                    if:false={isEditing}
+                                    value={selectedTemplate.Notes__c}
+                                    disabled
+                                    rows="5"
+                                ></lightning-textarea>
+                                <lightning-textarea
+                                    if:true={isEditing}
+                                    value={editingTemplate.Notes__c}
+                                    data-field="Notes__c"
+                                    onchange={handleFieldChange}
+                                    rows="5"
+                                    placeholder="What changed in this version?"
+                                ></lightning-textarea>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Attempt History -->
+                    <div class="slds-m-top_large">
+                        <h4 class="slds-text-heading_small slds-m-bottom_small">
+                            Recent Attempts Using This Template
+                        </h4>
+                        <lightning-datatable
+                            key-field="Id"
+                            data={selectedTemplate.LLM_Attempts__r}
+                            columns={attemptColumns}
+                            hide-default-actions
+                        ></lightning-datatable>
+                    </div>
+                </div>
+            </div>
+
+            <div if:false={hasTemplates} class="slds-box slds-box_small slds-text-align_center">
+                <p>No prompt templates found. Create one to get started.</p>
+            </div>
+        </div>
+    </lightning-card>
+</template>
