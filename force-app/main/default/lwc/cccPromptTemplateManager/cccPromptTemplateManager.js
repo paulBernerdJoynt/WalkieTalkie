@@ -1,8 +1,6 @@
 import { LightningElement, track, wire } from 'lwc';
-import { getListUi } from 'lightning/uiListApi';
 import { ShowToastEvent } from 'lightning/platformShowToastEvent';
 import CCC_PROMPT_TEMPLATE_OBJECT from '@salesforce/schema/CCC_Prompt_Template__c';
-import getActiveTemplate from '@salesforce/apex/CCCTemplateController.getActiveTemplate';
 import getAllTemplates from '@salesforce/apex/CCCTemplateController.getAllTemplates';
 import saveTemplate from '@salesforce/apex/CCCTemplateController.saveTemplate';
 import setActiveTemplate from '@salesforce/apex/CCCTemplateController.setActiveTemplate';
@@ -11,6 +9,7 @@ export default class CccPromptTemplateManager extends LightningElement {
     objectApiName = CCC_PROMPT_TEMPLATE_OBJECT;
     @track templates = [];
     @track selectedTemplate = null;
+    @track selectedTemplateId = null;
     @track isLoading = false;
     @track isEditing = false;
     @track editingTemplate = {};
@@ -42,14 +41,14 @@ export default class CccPromptTemplateManager extends LightningElement {
         const template = this.templates.find(t => t.Id === templateId);
         if (template) {
             this.selectedTemplate = template;
+            this.selectedTemplateId = templateId;
             this.editingTemplate = { ...template };
             this.isEditing = false;
         }
     }
 
     handleSelectTemplate(event) {
-        const templateId = event.currentTarget.dataset.templateId;
-        this.selectTemplate(templateId);
+        this.selectTemplate(event.detail.value);
     }
 
     handleEdit() {
@@ -76,11 +75,11 @@ export default class CccPromptTemplateManager extends LightningElement {
         saveTemplate({ template: this.editingTemplate })
             .then((result) => {
                 this.selectedTemplate = result;
+                this.selectedTemplateId = result.Id;
                 this.editingTemplate = { ...result };
                 this.isEditing = false;
                 this.isLoading = false;
                 this.showSuccess('Template saved successfully');
-                // Refresh the list
                 return this.refreshTemplates();
             })
             .catch((error) => {
@@ -94,10 +93,10 @@ export default class CccPromptTemplateManager extends LightningElement {
         setActiveTemplate({ templateId: this.selectedTemplate.Id })
             .then((result) => {
                 this.selectedTemplate = result;
+                this.selectedTemplateId = result.Id;
                 this.editingTemplate = { ...result };
                 this.isLoading = false;
                 this.showSuccess('Template set as active');
-                // Refresh the list
                 return this.refreshTemplates();
             })
             .catch((error) => {
@@ -107,7 +106,6 @@ export default class CccPromptTemplateManager extends LightningElement {
     }
 
     refreshTemplates() {
-        // Refresh the wired data
         return getAllTemplates()
             .then((result) => {
                 this.templates = result;
@@ -118,19 +116,11 @@ export default class CccPromptTemplateManager extends LightningElement {
     }
 
     showSuccess(message) {
-        this.dispatchEvent(new ShowToastEvent({
-            title: 'Success',
-            message: message,
-            variant: 'success'
-        }));
+        this.dispatchEvent(new ShowToastEvent({ title: 'Success', message, variant: 'success' }));
     }
 
     showError(message) {
-        this.dispatchEvent(new ShowToastEvent({
-            title: 'Error',
-            message: message,
-            variant: 'error'
-        }));
+        this.dispatchEvent(new ShowToastEvent({ title: 'Error', message, variant: 'error' }));
     }
 
     get hasTemplates() {
@@ -145,13 +135,10 @@ export default class CccPromptTemplateManager extends LightningElement {
         return !this.isEditing && !this.isActiveTemplate;
     }
 
-    get templatesWithStyle() {
-        const selectedId = this.selectedTemplate && this.selectedTemplate.Id;
+    get templateOptions() {
         return this.templates.map(t => ({
-            ...t,
-            itemStyle: t.Id === selectedId
-                ? 'background-color: #e7f2ff; cursor: pointer; border-left: 3px solid #0070d2;'
-                : 'cursor: pointer;'
+            label: t.Is_Active__c ? `${t.Name} v${t.Version_Number__c} ★` : `${t.Name} v${t.Version_Number__c}`,
+            value: t.Id
         }));
     }
 }
