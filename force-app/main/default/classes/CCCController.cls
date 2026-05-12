@@ -44,49 +44,46 @@ public with sharing class CCCController {
         if (String.isBlank(transcript))  throw new AuraHandledException('Transcript is required.');
         if (String.isBlank(path))        throw new AuraHandledException('Path is required.');
 
+        // ── SOQL only — no DML before callouts ────────────────────────────────
+        String systemPrompt    = getActivePrompt();
+        String activeTemplateId = getActiveTemplateId();
+
         WorkOrder wo = new WorkOrder(
             Id                    = workOrderId,
             CCC_Raw_Transcript__c = transcript
         );
-
         Map<String, String> result = new Map<String, String>{ 'path' => path };
 
-        String systemPrompt = getActivePrompt();
+        // Build attempt record in memory; insert after all callouts
+        CCC_LLM_Attempt__c attempt = new CCC_LLM_Attempt__c(
+            Work_Order__c              = workOrderId,
+            Raw_Input__c               = transcript,
+            Prompt_Template_Version__c = activeTemplateId,
+            OpenAI_CCC_Status__c       = 'Not Attempted'
+        );
 
-        // Get active prompt template for reference
-        CCC_Prompt_Template__c activeTemplate = null;
-        try {
-            List<CCC_Prompt_Template__c> templates = [
-                SELECT Id FROM CCC_Prompt_Template__c
-                WHERE Is_Active__c = true
-                LIMIT 1
-            ];
-            if (!templates.isEmpty()) {
-                activeTemplate = templates[0];
-            }
-        } catch (Exception e) { }
-
-        // Create attempt record
-        String attemptId = createAttemptRecord(workOrderId, transcript,
-                                              (activeTemplate != null) ? activeTemplate.Id : null);
-
-        // HTTP callouts must happen before any DML
+        // ── HTTP callout (OpenAI) ─────────────────────────────────────────────
         if (path == 'openai' || path == 'both') {
-            String apiKey = getApiKey();
+            String apiKey    = getApiKey();
             String promptLog = '[SYSTEM PROMPT]\n' + systemPrompt + '\n\n[USER INPUT]\n' + transcript;
             HttpRequest  req = buildChatRequest(apiKey, systemPrompt, transcript);
             HttpResponse res;
             try {
                 res = new Http().send(req);
             } catch (CalloutException e) {
-                updateAttemptWithSTTResult(attemptId, 'Success', null);
-                updateAttemptWithLLMResult(attemptId, 'Failure', 'Network unavailable: ' + e.getMessage(), null, null, null);
-                throw new AuraHandledException('OpenAI connection failed. Attempt: ' + attemptId + ' (' + e.getMessage() + ')');
+                // Callout was attempted — DML is now safe
+                attempt.SpeechToText_Status__c    = 'Success';
+                attempt.OpenAI_CCC_Status__c      = 'Failure';
+                attempt.OpenAI_Failure_Reason__c  = truncate('Network: ' + e.getMessage(), 255);
+                insert attempt;
+                throw new AuraHandledException('OpenAI connection failed. Attempt: ' + attempt.Id + ' (' + e.getMessage() + ')');
             }
             if (res.getStatusCode() != 200) {
-                updateAttemptWithSTTResult(attemptId, 'Success', null);
-                updateAttemptWithLLMResult(attemptId, 'Failure', 'HTTP ' + res.getStatusCode(), null, null, null);
-                throw new AuraHandledException('OpenAI returned HTTP ' + res.getStatusCode() + '. Attempt: ' + attemptId);
+                attempt.SpeechToText_Status__c   = 'Success';
+                attempt.OpenAI_CCC_Status__c     = 'Failure';
+                attempt.OpenAI_Failure_Reason__c = 'HTTP ' + res.getStatusCode();
+                insert attempt;
+                throw new AuraHandledException('OpenAI returned HTTP ' + res.getStatusCode() + '. Attempt: ' + attempt.Id);
             }
             Map<String, String> oai = parseResponse(res.getBody());
             wo.CCC_Prompt_Log__c   = promptLog;
@@ -97,13 +94,14 @@ public with sharing class CCCController {
             result.put('openai_complaint',  oai.get('complaint'));
             result.put('openai_cause',      oai.get('cause'));
             result.put('openai_correction', oai.get('correction'));
-
-            // Log LLM success
-            updateAttemptWithSTTResult(attemptId, 'Success', null);
-            updateAttemptWithLLMResult(attemptId, 'Success', null, oai.get('complaint'), oai.get('cause'), oai.get('correction'));
+            attempt.SpeechToText_Status__c = 'Success';
+            attempt.OpenAI_CCC_Status__c   = 'Success';
+            attempt.Complaint__c           = oai.get('complaint');
+            attempt.Cause__c               = oai.get('cause');
+            attempt.Correction__c          = oai.get('correction');
         }
 
-        // Invocable.Action (Einstein LLM Gateway — not a counted HTTP callout)
+        // ── Invocable.Action (Agentforce / Einstein LLM Gateway) ─────────────
         if (path == 'agentforce' || path == 'both') {
             try {
                 Map<String, String> af = callAgentforce(transcript);
@@ -114,14 +112,13 @@ public with sharing class CCCController {
                 result.put('af_cause',      af.get('cause'));
                 result.put('af_correction', af.get('correction'));
             } catch (Exception e) {
-                if (path == 'agentforce') {
-                    throw new AuraHandledException(e.getMessage());
-                }
-                // 'both' path: record the error but still save OpenAI results
+                if (path == 'agentforce') throw new AuraHandledException(e.getMessage());
                 result.put('af_error', e.getMessage());
             }
         }
 
+        // ── DML: all at once after all callouts ───────────────────────────────
+        insert attempt;
         update wo;
         return result;
     }
@@ -133,53 +130,51 @@ public with sharing class CCCController {
         if (String.isBlank(workOrderId)) throw new AuraHandledException('Work Order ID is required.');
         if (String.isBlank(rawInput))    throw new AuraHandledException('Input text is required.');
 
-        String apiKey    = getApiKey();
+        // ── SOQL only — no DML before callout ─────────────────────────────────
+        String apiKey       = getApiKey();
         String systemPrompt = getActivePrompt();
+        String activeTemplateId = getActiveTemplateId();
+        String promptLog    = '[SYSTEM PROMPT]\n' + systemPrompt + '\n\n[USER INPUT]\n' + rawInput;
 
-        // Get active prompt template for reference
-        CCC_Prompt_Template__c activeTemplate = null;
-        try {
-            List<CCC_Prompt_Template__c> templates = [
-                SELECT Id FROM CCC_Prompt_Template__c
-                WHERE Is_Active__c = true
-                LIMIT 1
-            ];
-            if (!templates.isEmpty()) {
-                activeTemplate = templates[0];
-            }
-        } catch (Exception e) { }
+        CCC_LLM_Attempt__c attempt = new CCC_LLM_Attempt__c(
+            Work_Order__c              = workOrderId,
+            Raw_Input__c               = rawInput,
+            Prompt_Template_Version__c = activeTemplateId,
+            OpenAI_CCC_Status__c       = 'Not Attempted'
+        );
 
-        // Create attempt record to log this extraction
-        String attemptId = createAttemptRecord(workOrderId, rawInput,
-                                              (activeTemplate != null) ? activeTemplate.Id : null);
-
-        String promptLog = '[SYSTEM PROMPT]\n' + systemPrompt + '\n\n[USER INPUT]\n' + rawInput;
-
+        // ── HTTP callout ───────────────────────────────────────────────────────
         HttpRequest  req = buildChatRequest(apiKey, systemPrompt, rawInput);
         HttpResponse res;
         try {
             res = new Http().send(req);
         } catch (CalloutException e) {
-            // Log STT as success (it's text input), LLM as failed
-            updateAttemptWithSTTResult(attemptId, 'Success', null);
-            updateAttemptWithLLMResult(attemptId, 'Failure', 'Network unavailable: ' + e.getMessage(), null, null, null);
+            attempt.SpeechToText_Status__c   = 'Success';
+            attempt.OpenAI_CCC_Status__c     = 'Failure';
+            attempt.OpenAI_Failure_Reason__c = truncate('Network: ' + e.getMessage(), 255);
+            insert attempt;
             persistRawInput(workOrderId, rawInput, promptLog, null, null);
             throw new AuraHandledException('LLM connection failed — raw input saved. (' + e.getMessage() + ')');
         }
 
         if (res.getStatusCode() != 200) {
-            // Log STT as success, LLM as failed
-            updateAttemptWithSTTResult(attemptId, 'Success', null);
-            updateAttemptWithLLMResult(attemptId, 'Failure', 'HTTP ' + res.getStatusCode(), null, null, null);
+            attempt.SpeechToText_Status__c   = 'Success';
+            attempt.OpenAI_CCC_Status__c     = 'Failure';
+            attempt.OpenAI_Failure_Reason__c = 'HTTP ' + res.getStatusCode();
+            insert attempt;
             persistRawInput(workOrderId, rawInput, promptLog, res.getBody(), null);
-            throw new AuraHandledException('LLM returned HTTP ' + res.getStatusCode() + ' — raw input saved. Attempt: ' + attemptId);
+            throw new AuraHandledException('LLM returned HTTP ' + res.getStatusCode() + ' — raw input saved. Attempt: ' + attempt.Id);
         }
 
         Map<String, String> ccc = parseResponse(res.getBody());
 
-        // Log LLM success
-        updateAttemptWithSTTResult(attemptId, 'Success', null);
-        updateAttemptWithLLMResult(attemptId, 'Success', null, ccc.get('complaint'), ccc.get('cause'), ccc.get('correction'));
+        // ── DML: all at once after callout ─────────────────────────────────────
+        attempt.SpeechToText_Status__c = 'Success';
+        attempt.OpenAI_CCC_Status__c   = 'Success';
+        attempt.Complaint__c           = ccc.get('complaint');
+        attempt.Cause__c               = ccc.get('cause');
+        attempt.Correction__c          = ccc.get('correction');
+        insert attempt;
 
         update new WorkOrder(
             Id                  = workOrderId,
@@ -234,52 +229,49 @@ public with sharing class CCCController {
         if (String.isBlank(workOrderId)) throw new AuraHandledException('Work Order ID is required.');
         if (String.isBlank(transcript))  throw new AuraHandledException('Transcript is required.');
 
-        String apiKey    = getApiKey();
+        // ── SOQL only — no DML before callout ─────────────────────────────────
+        String apiKey       = getApiKey();
         String systemPrompt = getActivePrompt();
+        String activeTemplateId = getActiveTemplateId();
+        String promptLog    = '[SYSTEM PROMPT]\n' + systemPrompt + '\n\n[USER INPUT]\n' + transcript;
 
-        // Get active prompt template for reference
-        CCC_Prompt_Template__c activeTemplate = null;
-        try {
-            List<CCC_Prompt_Template__c> templates = [
-                SELECT Id FROM CCC_Prompt_Template__c
-                WHERE Is_Active__c = true
-                LIMIT 1
-            ];
-            if (!templates.isEmpty()) {
-                activeTemplate = templates[0];
-            }
-        } catch (Exception e) { }
+        CCC_LLM_Attempt__c attempt = new CCC_LLM_Attempt__c(
+            Work_Order__c              = workOrderId,
+            Raw_Input__c               = transcript,
+            Prompt_Template_Version__c = activeTemplateId,
+            SpeechToText_Status__c     = 'Success',
+            OpenAI_CCC_Status__c       = 'Not Attempted'
+        );
 
-        // Create attempt record
-        String attemptId = createAttemptRecord(workOrderId, transcript,
-                                              (activeTemplate != null) ? activeTemplate.Id : null);
-
-        String promptLog = '[SYSTEM PROMPT]\n' + systemPrompt + '\n\n[USER INPUT]\n' + transcript;
-
+        // ── HTTP callout ───────────────────────────────────────────────────────
         HttpRequest  req = buildChatRequest(apiKey, systemPrompt, transcript);
         HttpResponse res;
         try {
             res = new Http().send(req);
         } catch (CalloutException e) {
-            // Transcript came from STT (success), but LLM call failed
-            updateAttemptWithSTTResult(attemptId, 'Success', null);
-            updateAttemptWithLLMResult(attemptId, 'Failure', 'Network unavailable: ' + e.getMessage(), null, null, null);
+            attempt.OpenAI_CCC_Status__c     = 'Failure';
+            attempt.OpenAI_Failure_Reason__c = truncate('Network: ' + e.getMessage(), 255);
+            insert attempt;
             persistTranscript(workOrderId, transcript);
-            throw new AuraHandledException('LLM connection failed — transcript saved. Attempt: ' + attemptId + ' (' + e.getMessage() + ')');
+            throw new AuraHandledException('LLM connection failed — transcript saved. Attempt: ' + attempt.Id + ' (' + e.getMessage() + ')');
         }
 
         if (res.getStatusCode() != 200) {
-            updateAttemptWithSTTResult(attemptId, 'Success', null);
-            updateAttemptWithLLMResult(attemptId, 'Failure', 'HTTP ' + res.getStatusCode(), null, null, null);
+            attempt.OpenAI_CCC_Status__c     = 'Failure';
+            attempt.OpenAI_Failure_Reason__c = 'HTTP ' + res.getStatusCode();
+            insert attempt;
             persistTranscript(workOrderId, transcript);
-            throw new AuraHandledException('LLM returned HTTP ' + res.getStatusCode() + ' — transcript saved. Attempt: ' + attemptId);
+            throw new AuraHandledException('LLM returned HTTP ' + res.getStatusCode() + ' — transcript saved. Attempt: ' + attempt.Id);
         }
 
         Map<String, String> ccc = parseResponse(res.getBody());
 
-        // Log success
-        updateAttemptWithSTTResult(attemptId, 'Success', null);
-        updateAttemptWithLLMResult(attemptId, 'Success', null, ccc.get('complaint'), ccc.get('cause'), ccc.get('correction'));
+        // ── DML: all at once after callout ─────────────────────────────────────
+        attempt.OpenAI_CCC_Status__c = 'Success';
+        attempt.Complaint__c         = ccc.get('complaint');
+        attempt.Cause__c             = ccc.get('cause');
+        attempt.Correction__c        = ccc.get('correction');
+        insert attempt;
 
         update new WorkOrder(
             Id                  = workOrderId,
@@ -297,8 +289,21 @@ public with sharing class CCCController {
 
     // ── Private helpers ──────────────────────────────────────────────────────
 
+    private static String getActiveTemplateId() {
+        try {
+            List<CCC_Prompt_Template__c> t = [
+                SELECT Id FROM CCC_Prompt_Template__c WHERE Is_Active__c = true LIMIT 1
+            ];
+            return t.isEmpty() ? null : t[0].Id;
+        } catch (Exception e) { return null; }
+    }
+
+    private static String truncate(String s, Integer maxLen) {
+        return (s != null && s.length() > maxLen) ? s.left(maxLen) : s;
+    }
+
     /**
-     * Get the active CCC_Prompt_Template__c. If none active, return the fallback.
+     * Get the active CCC_Prompt_Template__c prompt text. Falls back to hardcoded constant.
      */
     private static String getActivePrompt() {
         try {
@@ -335,64 +340,6 @@ public with sharing class CCCController {
             // Query failed; fall through
         }
         return '';
-    }
-
-    /**
-     * Create a CCC_LLM_Attempt record with raw input and initial status.
-     * Returns the record ID for later updates.
-     */
-    private static String createAttemptRecord(String workOrderId, String rawInput, String promptTemplateId) {
-        try {
-            CCC_LLM_Attempt__c attempt = new CCC_LLM_Attempt__c(
-                Work_Order__c = workOrderId,
-                Raw_Input__c = rawInput,
-                Prompt_Template_Version__c = promptTemplateId,
-                SpeechToText_Status__c = null,
-                OpenAI_CCC_Status__c = 'Not Attempted'
-            );
-            insert attempt;
-            return attempt.Id;
-        } catch (Exception e) {
-            // If we can't create the record, log the error but don't throw
-            System.debug('Error creating CCC_LLM_Attempt: ' + e.getMessage());
-            return null;
-        }
-    }
-
-    /**
-     * Update the attempt record with STT result.
-     */
-    private static void updateAttemptWithSTTResult(String attemptId, String status, String failureReason) {
-        if (String.isBlank(attemptId)) return;
-        try {
-            update new CCC_LLM_Attempt__c(
-                Id = attemptId,
-                SpeechToText_Status__c = status,
-                SpeechToText_Failure_Reason__c = failureReason
-            );
-        } catch (Exception e) {
-            System.debug('Error updating STT result: ' + e.getMessage());
-        }
-    }
-
-    /**
-     * Update the attempt record with LLM result.
-     */
-    private static void updateAttemptWithLLMResult(String attemptId, String status, String failureReason,
-                                                    String complaint, String cause, String correction) {
-        if (String.isBlank(attemptId)) return;
-        try {
-            update new CCC_LLM_Attempt__c(
-                Id = attemptId,
-                OpenAI_CCC_Status__c = status,
-                OpenAI_Failure_Reason__c = failureReason,
-                Complaint__c = complaint,
-                Cause__c = cause,
-                Correction__c = correction
-            );
-        } catch (Exception e) {
-            System.debug('Error updating LLM result: ' + e.getMessage());
-        }
     }
 
     private static String getApiKey() {
