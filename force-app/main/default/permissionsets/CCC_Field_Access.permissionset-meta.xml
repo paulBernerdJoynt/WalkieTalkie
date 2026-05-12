@@ -105,6 +105,62 @@
         <field>CCC_LLM_Attempt__c.SpeechToText_Status__c</field>
         <readable>true</readable>
     </fieldPermissions>
+    <!-- ── CCC_LLM_Attempt__c new metadata fields (read-only) ── -->
+    <fieldPermissions>
+        <editable>false</editable>
+        <field>CCC_LLM_Attempt__c.CCC_Input_Quality__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>false</editable>
+        <field>CCC_LLM_Attempt__c.CCC_Complaint_Confidence__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>false</editable>
+        <field>CCC_LLM_Attempt__c.CCC_Complaint_Source__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>false</editable>
+        <field>CCC_LLM_Attempt__c.CCC_Complaint_Note__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>false</editable>
+        <field>CCC_LLM_Attempt__c.CCC_Cause_Confidence__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>false</editable>
+        <field>CCC_LLM_Attempt__c.CCC_Cause_Source__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>false</editable>
+        <field>CCC_LLM_Attempt__c.CCC_Cause_Note__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>false</editable>
+        <field>CCC_LLM_Attempt__c.CCC_Correction_Confidence__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>false</editable>
+        <field>CCC_LLM_Attempt__c.CCC_Correction_Source__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>false</editable>
+        <field>CCC_LLM_Attempt__c.CCC_Correction_Note__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>false</editable>
+        <field>CCC_LLM_Attempt__c.CCC_Raw_Response__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
     <!-- ── CCC_Prompt_Template__c fields (editable — admins manage templates) ── -->
     <fieldPermissions>
         <editable>true</editable>

@@ -311,10 +311,156 @@ private class CCCControllerTest {
         System.assertEquals('abcdef', result.toString());
     }
 
+    // ── Enhanced schema tests ─────────────────────────────────────────────────
+
+    @isTest
+    static void testSubmitCCC_nestedFormat_populatesMetadataFields() {
+        WorkOrder wo = [SELECT Id FROM WorkOrder LIMIT 1];
+        Test.setMock(HttpCalloutMock.class, new CCCMock(200, buildChatSuccessBodyNested()));
+
+        Test.startTest();
+        Map<String, String> result = CCCController.submitCCC(wo.Id, 'Truck leaking oil. Found cracked pan gasket. Replaced gasket.');
+        Test.stopTest();
+
+        System.assertEquals('Oil leak observed.',       result.get('complaint'));
+        System.assertEquals('Cracked oil pan gasket.',  result.get('cause'));
+        System.assertEquals('Replaced oil pan gasket.', result.get('correction'));
+
+        CCC_LLM_Attempt__c attempt = [
+            SELECT CCC_Input_Quality__c, CCC_Complaint_Confidence__c, CCC_Complaint_Source__c,
+                   CCC_Complaint_Note__c, CCC_Cause_Confidence__c, CCC_Correction_Confidence__c,
+                   CCC_Raw_Response__c, OpenAI_CCC_Status__c
+            FROM CCC_LLM_Attempt__c
+            ORDER BY CreatedDate DESC LIMIT 1
+        ];
+        System.assertEquals('clear',              attempt.CCC_Input_Quality__c,         'Input quality should be set');
+        System.assertEquals(0.95,                 attempt.CCC_Complaint_Confidence__c,  'Complaint confidence should be 0.95');
+        System.assertEquals('oil dripping from engine', attempt.CCC_Complaint_Source__c, 'Complaint source should be set');
+        System.assertEquals('explicitly stated',  attempt.CCC_Complaint_Note__c,        'Complaint note should be set');
+        System.assertEquals(0.90,                 attempt.CCC_Cause_Confidence__c,      'Cause confidence should be 0.90');
+        System.assertEquals(1.0,                  attempt.CCC_Correction_Confidence__c, 'Correction confidence should be 1.0');
+        System.assertNotEquals(null,              attempt.CCC_Raw_Response__c,           'Raw response should be stored');
+        System.assertEquals('Success',            attempt.OpenAI_CCC_Status__c,          'Status should be Success');
+    }
+
+    @isTest
+    static void testSubmitCCC_flatFormat_backwardCompatStillWorks() {
+        WorkOrder wo = [SELECT Id FROM WorkOrder LIMIT 1];
+        Test.setMock(HttpCalloutMock.class, new CCCMock(200, buildChatSuccessBody()));
+
+        Test.startTest();
+        Map<String, String> result = CCCController.submitCCC(wo.Id, 'Truck leaking oil.');
+        Test.stopTest();
+
+        System.assertEquals('Oil leak observed.',       result.get('complaint'));
+        System.assertEquals('Cracked oil pan gasket.',  result.get('cause'));
+        System.assertEquals('Replaced oil pan gasket.', result.get('correction'));
+
+        CCC_LLM_Attempt__c attempt = [
+            SELECT CCC_Input_Quality__c, CCC_Complaint_Confidence__c, OpenAI_CCC_Status__c
+            FROM CCC_LLM_Attempt__c ORDER BY CreatedDate DESC LIMIT 1
+        ];
+        System.assertEquals('Success', attempt.OpenAI_CCC_Status__c,    'Status should be Success');
+        System.assertEquals(null,      attempt.CCC_Input_Quality__c,     'Input quality should be null for flat format');
+        System.assertEquals(null,      attempt.CCC_Complaint_Confidence__c, 'Confidence should be null for flat format');
+    }
+
+    @isTest
+    static void testSubmitCCC_malformedJson_savesFailureRecord_noThrow() {
+        WorkOrder wo = [SELECT Id FROM WorkOrder LIMIT 1];
+        String malformedBody = '{"choices":[{"message":{"role":"assistant","content":"not valid json {"}}]}';
+        Test.setMock(HttpCalloutMock.class, new CCCMock(200, malformedBody));
+
+        Test.startTest();
+        Boolean threw = false;
+        Map<String, String> result;
+        try {
+            result = CCCController.submitCCC(wo.Id, 'Some input');
+        } catch (Exception e) {
+            threw = true;
+        }
+        Test.stopTest();
+
+        System.assert(!threw, 'Malformed JSON should not throw — record should save gracefully');
+
+        CCC_LLM_Attempt__c attempt = [
+            SELECT OpenAI_CCC_Status__c, OpenAI_Failure_Reason__c, CCC_Input_Quality__c, Complaint__c
+            FROM CCC_LLM_Attempt__c ORDER BY CreatedDate DESC LIMIT 1
+        ];
+        System.assertEquals('Failure',              attempt.OpenAI_CCC_Status__c,    'Status should be Failure');
+        System.assertEquals('Malformed JSON response', attempt.OpenAI_Failure_Reason__c, 'Failure reason should be set');
+        System.assertEquals('insufficient',         attempt.CCC_Input_Quality__c,    'Input quality should be insufficient');
+        System.assertEquals(null,                   attempt.Complaint__c,            'Complaint should be null');
+    }
+
+    @isTest
+    static void testSubmitCCC_confidenceOutOfRange_isClamped() {
+        WorkOrder wo = [SELECT Id FROM WorkOrder LIMIT 1];
+        String innerJson =
+            '{\\"input_quality\\":\\"clear\\",' +
+            '\\"complaint\\":{\\"value\\":\\"Oil leak.\\",\\"confidence\\":1.5,\\"source\\":\\"oil leak\\",\\"note\\":\\"stated\\"},' +
+            '\\"cause\\":{\\"value\\":\\"Gasket.\\",\\"confidence\\":-0.2,\\"source\\":\\"gasket\\",\\"note\\":\\"inferred\\"},' +
+            '\\"correction\\":{\\"value\\":\\"Replaced.\\",\\"confidence\\":0.8,\\"source\\":\\"replaced\\",\\"note\\":\\"clear\\"}}';
+        String body = '{"choices":[{"message":{"role":"assistant","content":"' + innerJson + '"}}]}';
+        Test.setMock(HttpCalloutMock.class, new CCCMock(200, body));
+
+        Test.startTest();
+        CCCController.submitCCC(wo.Id, 'Oil leak.');
+        Test.stopTest();
+
+        CCC_LLM_Attempt__c attempt = [
+            SELECT CCC_Complaint_Confidence__c, CCC_Cause_Confidence__c
+            FROM CCC_LLM_Attempt__c ORDER BY CreatedDate DESC LIMIT 1
+        ];
+        System.assertEquals(1.0, attempt.CCC_Complaint_Confidence__c, 'Confidence > 1 should be clamped to 1.0');
+        System.assertEquals(0.0, attempt.CCC_Cause_Confidence__c,     'Negative confidence should be clamped to 0.0');
+    }
+
+    @isTest
+    static void testSubmitCCC_missingSubkeys_noThrow_valueStillPopulates() {
+        WorkOrder wo = [SELECT Id FROM WorkOrder LIMIT 1];
+        String innerJson =
+            '{\\"input_quality\\":\\"fragmented\\",' +
+            '\\"complaint\\":{\\"value\\":\\"Oil leak.\\"},' +
+            '\\"cause\\":null,' +
+            '\\"correction\\":null}';
+        String body = '{"choices":[{"message":{"role":"assistant","content":"' + innerJson + '"}}]}';
+        Test.setMock(HttpCalloutMock.class, new CCCMock(200, body));
+
+        Test.startTest();
+        Boolean threw = false;
+        try {
+            CCCController.submitCCC(wo.Id, 'Oil leak.');
+        } catch (Exception e) {
+            threw = true;
+        }
+        Test.stopTest();
+
+        System.assert(!threw, 'Missing sub-keys should not throw');
+
+        CCC_LLM_Attempt__c attempt = [
+            SELECT Complaint__c, CCC_Complaint_Confidence__c, CCC_Input_Quality__c, Cause__c
+            FROM CCC_LLM_Attempt__c ORDER BY CreatedDate DESC LIMIT 1
+        ];
+        System.assertEquals('Oil leak.',    attempt.Complaint__c,                'Value should populate even when sub-keys absent');
+        System.assertEquals(null,           attempt.CCC_Complaint_Confidence__c, 'Missing confidence should be null');
+        System.assertEquals('fragmented',   attempt.CCC_Input_Quality__c,        'Input quality should be fragmented');
+        System.assertEquals(null,           attempt.Cause__c,                    'Null field object should produce null value');
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private static String buildChatSuccessBody() {
         String innerJson = '{\\"complaint\\":\\"Oil leak observed.\\",\\"cause\\":\\"Cracked oil pan gasket.\\",\\"correction\\":\\"Replaced oil pan gasket.\\"}';
+        return '{"choices":[{"message":{"role":"assistant","content":"' + innerJson + '"}}]}';
+    }
+
+    private static String buildChatSuccessBodyNested() {
+        String innerJson =
+            '{\\"input_quality\\":\\"clear\\",' +
+            '\\"complaint\\":{\\"value\\":\\"Oil leak observed.\\",\\"confidence\\":0.95,\\"source\\":\\"oil dripping from engine\\",\\"note\\":\\"explicitly stated\\"},' +
+            '\\"cause\\":{\\"value\\":\\"Cracked oil pan gasket.\\",\\"confidence\\":0.90,\\"source\\":\\"cracked gasket found\\",\\"note\\":\\"clearly identified\\"},' +
+            '\\"correction\\":{\\"value\\":\\"Replaced oil pan gasket.\\",\\"confidence\\":1.0,\\"source\\":\\"replaced the gasket\\",\\"note\\":\\"unambiguous\\"}}';
         return '{"choices":[{"message":{"role":"assistant","content":"' + innerJson + '"}}]}';
     }
 

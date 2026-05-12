@@ -1,5 +1,24 @@
 public with sharing class CCCController {
 
+    private class ParseResult {
+        String  inputQuality;
+        String  complaint;
+        Decimal complaintConfidence;
+        String  complaintSource;
+        String  complaintNote;
+        String  cause;
+        Decimal causeConfidence;
+        String  causeSource;
+        String  causeNote;
+        String  correction;
+        Decimal correctionConfidence;
+        String  correctionSource;
+        String  correctionNote;
+        String  rawResponse;
+        Boolean parseError       = false;
+        String  parseErrorReason;
+    }
+
     private static final String OPENAI_ENDPOINT       = 'https://api.openai.com/v1/chat/completions';
     private static final String WHISPER_ENDPOINT      = 'https://api.openai.com/v1/audio/transcriptions';
     private static final String OPENAI_MODEL          = 'gpt-4o';
@@ -85,20 +104,36 @@ public with sharing class CCCController {
                 insert attempt;
                 throw new AuraHandledException('OpenAI returned HTTP ' + res.getStatusCode() + '. Attempt: ' + attempt.Id);
             }
-            Map<String, String> oai = parseResponse(res.getBody());
+            ParseResult parsed = parseResponse(res.getBody());
             wo.CCC_Prompt_Log__c   = promptLog;
             wo.CCC_Response_Log__c = res.getBody();
-            wo.CCC_Complaint__c    = oai.get('complaint');
-            wo.CCC_Cause__c        = oai.get('cause');
-            wo.CCC_Correction__c   = oai.get('correction');
-            result.put('openai_complaint',  oai.get('complaint'));
-            result.put('openai_cause',      oai.get('cause'));
-            result.put('openai_correction', oai.get('correction'));
+            wo.CCC_Complaint__c    = parsed.complaint;
+            wo.CCC_Cause__c        = parsed.cause;
+            wo.CCC_Correction__c   = parsed.correction;
+            result.put('openai_complaint',  parsed.complaint);
+            result.put('openai_cause',      parsed.cause);
+            result.put('openai_correction', parsed.correction);
             attempt.SpeechToText_Status__c = 'Success';
-            attempt.OpenAI_CCC_Status__c   = 'Success';
-            attempt.Complaint__c           = oai.get('complaint');
-            attempt.Cause__c               = oai.get('cause');
-            attempt.Correction__c          = oai.get('correction');
+            attempt.CCC_Raw_Response__c    = parsed.rawResponse;
+            if (parsed.parseError) {
+                attempt.OpenAI_CCC_Status__c    = 'Failure';
+                attempt.OpenAI_Failure_Reason__c = parsed.parseErrorReason;
+            } else {
+                attempt.OpenAI_CCC_Status__c         = 'Success';
+                attempt.Complaint__c                  = parsed.complaint;
+                attempt.Cause__c                      = parsed.cause;
+                attempt.Correction__c                 = parsed.correction;
+                attempt.CCC_Input_Quality__c          = parsed.inputQuality;
+                attempt.CCC_Complaint_Confidence__c   = parsed.complaintConfidence;
+                attempt.CCC_Complaint_Source__c       = parsed.complaintSource;
+                attempt.CCC_Complaint_Note__c         = parsed.complaintNote;
+                attempt.CCC_Cause_Confidence__c       = parsed.causeConfidence;
+                attempt.CCC_Cause_Source__c           = parsed.causeSource;
+                attempt.CCC_Cause_Note__c             = parsed.causeNote;
+                attempt.CCC_Correction_Confidence__c  = parsed.correctionConfidence;
+                attempt.CCC_Correction_Source__c      = parsed.correctionSource;
+                attempt.CCC_Correction_Note__c        = parsed.correctionNote;
+            }
         }
 
         // ── Invocable.Action (Agentforce / Einstein LLM Gateway) ─────────────
@@ -166,14 +201,30 @@ public with sharing class CCCController {
             throw new AuraHandledException('LLM returned HTTP ' + res.getStatusCode() + ' — raw input saved. Attempt: ' + attempt.Id);
         }
 
-        Map<String, String> ccc = parseResponse(res.getBody());
+        ParseResult parsed = parseResponse(res.getBody());
 
         // ── DML: all at once after callout ─────────────────────────────────────
-        attempt.SpeechToText_Status__c = 'Success';
-        attempt.OpenAI_CCC_Status__c   = 'Success';
-        attempt.Complaint__c           = ccc.get('complaint');
-        attempt.Cause__c               = ccc.get('cause');
-        attempt.Correction__c          = ccc.get('correction');
+        attempt.SpeechToText_Status__c  = 'Success';
+        attempt.CCC_Raw_Response__c     = parsed.rawResponse;
+        if (parsed.parseError) {
+            attempt.OpenAI_CCC_Status__c    = 'Failure';
+            attempt.OpenAI_Failure_Reason__c = parsed.parseErrorReason;
+        } else {
+            attempt.OpenAI_CCC_Status__c         = 'Success';
+            attempt.Complaint__c                  = parsed.complaint;
+            attempt.Cause__c                      = parsed.cause;
+            attempt.Correction__c                 = parsed.correction;
+            attempt.CCC_Input_Quality__c          = parsed.inputQuality;
+            attempt.CCC_Complaint_Confidence__c   = parsed.complaintConfidence;
+            attempt.CCC_Complaint_Source__c       = parsed.complaintSource;
+            attempt.CCC_Complaint_Note__c         = parsed.complaintNote;
+            attempt.CCC_Cause_Confidence__c       = parsed.causeConfidence;
+            attempt.CCC_Cause_Source__c           = parsed.causeSource;
+            attempt.CCC_Cause_Note__c             = parsed.causeNote;
+            attempt.CCC_Correction_Confidence__c  = parsed.correctionConfidence;
+            attempt.CCC_Correction_Source__c      = parsed.correctionSource;
+            attempt.CCC_Correction_Note__c        = parsed.correctionNote;
+        }
         insert attempt;
 
         update new WorkOrder(
@@ -181,12 +232,16 @@ public with sharing class CCCController {
             CCC_Raw_Input__c    = rawInput,
             CCC_Prompt_Log__c   = promptLog,
             CCC_Response_Log__c = res.getBody(),
-            CCC_Complaint__c    = ccc.get('complaint'),
-            CCC_Cause__c        = ccc.get('cause'),
-            CCC_Correction__c   = ccc.get('correction')
+            CCC_Complaint__c    = parsed.complaint,
+            CCC_Cause__c        = parsed.cause,
+            CCC_Correction__c   = parsed.correction
         );
 
-        return ccc;
+        return new Map<String, String>{
+            'complaint'  => parsed.complaint,
+            'cause'      => parsed.cause,
+            'correction' => parsed.correction
+        };
     }
 
     // ── v1.1 voice path ──────────────────────────────────────────────────────
@@ -264,13 +319,29 @@ public with sharing class CCCController {
             throw new AuraHandledException('LLM returned HTTP ' + res.getStatusCode() + ' — transcript saved. Attempt: ' + attempt.Id);
         }
 
-        Map<String, String> ccc = parseResponse(res.getBody());
+        ParseResult parsed = parseResponse(res.getBody());
 
         // ── DML: all at once after callout ─────────────────────────────────────
-        attempt.OpenAI_CCC_Status__c = 'Success';
-        attempt.Complaint__c         = ccc.get('complaint');
-        attempt.Cause__c             = ccc.get('cause');
-        attempt.Correction__c        = ccc.get('correction');
+        attempt.CCC_Raw_Response__c = parsed.rawResponse;
+        if (parsed.parseError) {
+            attempt.OpenAI_CCC_Status__c    = 'Failure';
+            attempt.OpenAI_Failure_Reason__c = parsed.parseErrorReason;
+        } else {
+            attempt.OpenAI_CCC_Status__c         = 'Success';
+            attempt.Complaint__c                  = parsed.complaint;
+            attempt.Cause__c                      = parsed.cause;
+            attempt.Correction__c                 = parsed.correction;
+            attempt.CCC_Input_Quality__c          = parsed.inputQuality;
+            attempt.CCC_Complaint_Confidence__c   = parsed.complaintConfidence;
+            attempt.CCC_Complaint_Source__c       = parsed.complaintSource;
+            attempt.CCC_Complaint_Note__c         = parsed.complaintNote;
+            attempt.CCC_Cause_Confidence__c       = parsed.causeConfidence;
+            attempt.CCC_Cause_Source__c           = parsed.causeSource;
+            attempt.CCC_Cause_Note__c             = parsed.causeNote;
+            attempt.CCC_Correction_Confidence__c  = parsed.correctionConfidence;
+            attempt.CCC_Correction_Source__c      = parsed.correctionSource;
+            attempt.CCC_Correction_Note__c        = parsed.correctionNote;
+        }
         insert attempt;
 
         update new WorkOrder(
@@ -279,12 +350,16 @@ public with sharing class CCCController {
             CCC_Transcript__c   = transcript,
             CCC_Prompt_Log__c   = promptLog,
             CCC_Response_Log__c = res.getBody(),
-            CCC_Complaint__c    = ccc.get('complaint'),
-            CCC_Cause__c        = ccc.get('cause'),
-            CCC_Correction__c   = ccc.get('correction')
+            CCC_Complaint__c    = parsed.complaint,
+            CCC_Cause__c        = parsed.cause,
+            CCC_Correction__c   = parsed.correction
         );
 
-        return ccc;
+        return new Map<String, String>{
+            'complaint'  => parsed.complaint,
+            'cause'      => parsed.cause,
+            'correction' => parsed.correction
+        };
     }
 
     // ── Private helpers ──────────────────────────────────────────────────────
@@ -420,7 +495,9 @@ public with sharing class CCCController {
         }
     }
 
-    private static Map<String, String> parseResponse(String responseBody) {
+    private static ParseResult parseResponse(String responseBody) {
+        ParseResult result = new ParseResult();
+        result.rawResponse = responseBody;
         try {
             Map<String, Object> root    = (Map<String, Object>) JSON.deserializeUntyped(responseBody);
             List<Object>        choices = (List<Object>) root.get('choices');
@@ -428,17 +505,66 @@ public with sharing class CCCController {
             Map<String, Object> message = (Map<String, Object>) choice.get('message');
             String              content = (String) message.get('content');
 
-            Map<String, Object> raw = (Map<String, Object>) JSON.deserializeUntyped(content);
-
-            Map<String, String> ccc = new Map<String, String>();
-            for (String key : new List<String>{ 'complaint', 'cause', 'correction' }) {
-                Object val = raw.get(key);
-                ccc.put(key, (val != null) ? String.valueOf(val) : null);
+            Map<String, Object> parsed;
+            try {
+                parsed = (Map<String, Object>) JSON.deserializeUntyped(content);
+            } catch (Exception inner) {
+                result.parseError       = true;
+                result.parseErrorReason = 'Malformed JSON response';
+                result.inputQuality     = 'insufficient';
+                return result;
             }
-            return ccc;
+
+            result.inputQuality         = validateInputQuality((String) parsed.get('input_quality'));
+            result.complaint            = extractFieldValue(parsed, 'complaint');
+            result.complaintConfidence  = extractConfidence(parsed, 'complaint');
+            result.complaintSource      = extractSubkey(parsed, 'complaint', 'source');
+            result.complaintNote        = extractSubkey(parsed, 'complaint', 'note');
+            result.cause                = extractFieldValue(parsed, 'cause');
+            result.causeConfidence      = extractConfidence(parsed, 'cause');
+            result.causeSource          = extractSubkey(parsed, 'cause', 'source');
+            result.causeNote            = extractSubkey(parsed, 'cause', 'note');
+            result.correction           = extractFieldValue(parsed, 'correction');
+            result.correctionConfidence = extractConfidence(parsed, 'correction');
+            result.correctionSource     = extractSubkey(parsed, 'correction', 'source');
+            result.correctionNote       = extractSubkey(parsed, 'correction', 'note');
         } catch (Exception e) {
-            throw new AuraHandledException('Failed to parse LLM response: ' + e.getMessage());
+            result.parseError       = true;
+            result.parseErrorReason = 'Malformed JSON response';
+            result.inputQuality     = 'insufficient';
         }
+        return result;
+    }
+
+    private static String extractFieldValue(Map<String, Object> parsed, String key) {
+        Object val = parsed.get(key);
+        if (val == null)           return null;
+        if (val instanceof String) return (String) val;
+        Object v = ((Map<String, Object>) val).get('value');
+        return v != null ? String.valueOf(v) : null;
+    }
+
+    private static Decimal extractConfidence(Map<String, Object> parsed, String key) {
+        Object val = parsed.get(key);
+        if (val == null || val instanceof String) return null;
+        Object c = ((Map<String, Object>) val).get('confidence');
+        if (c == null) return null;
+        Decimal conf = (Decimal) c;
+        if (conf < 0) conf = 0;
+        if (conf > 1) conf = 1;
+        return conf;
+    }
+
+    private static String extractSubkey(Map<String, Object> parsed, String fieldKey, String subkey) {
+        Object val = parsed.get(fieldKey);
+        if (val == null || val instanceof String) return null;
+        Object s = ((Map<String, Object>) val).get(subkey);
+        return s != null ? String.valueOf(s) : null;
+    }
+
+    private static String validateInputQuality(String iq) {
+        if (iq == 'clear' || iq == 'fragmented' || iq == 'insufficient') return iq;
+        return 'fragmented';
     }
 
     private static Map<String, String> callAgentforce(String transcript) {

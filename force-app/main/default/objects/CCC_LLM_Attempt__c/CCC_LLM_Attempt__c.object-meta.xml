@@ -142,6 +142,127 @@
         <visibleLines>5</visibleLines>
     </fields>
     <fields>
+        <fullName>CCC_Input_Quality__c</fullName>
+        <description>Top-level signal of input quality returned by the LLM.</description>
+        <externalId>false</externalId>
+        <label>Input Quality</label>
+        <required>false</required>
+        <trackHistory>false</trackHistory>
+        <type>Picklist</type>
+        <valueSet>
+            <restricted>true</restricted>
+            <valueSetDefinition>
+                <sorted>false</sorted>
+                <value><fullName>clear</fullName><default>false</default><label>Clear</label></value>
+                <value><fullName>fragmented</fullName><default>false</default><label>Fragmented</label></value>
+                <value><fullName>insufficient</fullName><default>false</default><label>Insufficient</label></value>
+            </valueSetDefinition>
+        </valueSet>
+    </fields>
+    <fields>
+        <fullName>CCC_Complaint_Confidence__c</fullName>
+        <description>LLM confidence score for the complaint extraction. Decimal 0.00–1.00.</description>
+        <externalId>false</externalId>
+        <label>Complaint Confidence</label>
+        <precision>3</precision>
+        <scale>2</scale>
+        <trackHistory>false</trackHistory>
+        <type>Number</type>
+        <unique>false</unique>
+    </fields>
+    <fields>
+        <fullName>CCC_Complaint_Source__c</fullName>
+        <description>Raw input phrase that most directly supported the complaint extraction.</description>
+        <externalId>false</externalId>
+        <label>Complaint Source</label>
+        <length>500</length>
+        <trackHistory>false</trackHistory>
+        <type>LongTextArea</type>
+        <visibleLines>3</visibleLines>
+    </fields>
+    <fields>
+        <fullName>CCC_Complaint_Note__c</fullName>
+        <description>Explanatory note from the LLM on why complaint confidence is at the reported level.</description>
+        <externalId>false</externalId>
+        <label>Complaint Note</label>
+        <length>500</length>
+        <trackHistory>false</trackHistory>
+        <type>LongTextArea</type>
+        <visibleLines>3</visibleLines>
+    </fields>
+    <fields>
+        <fullName>CCC_Cause_Confidence__c</fullName>
+        <description>LLM confidence score for the cause extraction. Decimal 0.00–1.00.</description>
+        <externalId>false</externalId>
+        <label>Cause Confidence</label>
+        <precision>3</precision>
+        <scale>2</scale>
+        <trackHistory>false</trackHistory>
+        <type>Number</type>
+        <unique>false</unique>
+    </fields>
+    <fields>
+        <fullName>CCC_Cause_Source__c</fullName>
+        <description>Raw input phrase that most directly supported the cause extraction.</description>
+        <externalId>false</externalId>
+        <label>Cause Source</label>
+        <length>500</length>
+        <trackHistory>false</trackHistory>
+        <type>LongTextArea</type>
+        <visibleLines>3</visibleLines>
+    </fields>
+    <fields>
+        <fullName>CCC_Cause_Note__c</fullName>
+        <description>Explanatory note from the LLM on why cause confidence is at the reported level.</description>
+        <externalId>false</externalId>
+        <label>Cause Note</label>
+        <length>500</length>
+        <trackHistory>false</trackHistory>
+        <type>LongTextArea</type>
+        <visibleLines>3</visibleLines>
+    </fields>
+    <fields>
+        <fullName>CCC_Correction_Confidence__c</fullName>
+        <description>LLM confidence score for the correction extraction. Decimal 0.00–1.00.</description>
+        <externalId>false</externalId>
+        <label>Correction Confidence</label>
+        <precision>3</precision>
+        <scale>2</scale>
+        <trackHistory>false</trackHistory>
+        <type>Number</type>
+        <unique>false</unique>
+    </fields>
+    <fields>
+        <fullName>CCC_Correction_Source__c</fullName>
+        <description>Raw input phrase that most directly supported the correction extraction.</description>
+        <externalId>false</externalId>
+        <label>Correction Source</label>
+        <length>500</length>
+        <trackHistory>false</trackHistory>
+        <type>LongTextArea</type>
+        <visibleLines>3</visibleLines>
+    </fields>
+    <fields>
+        <fullName>CCC_Correction_Note__c</fullName>
+        <description>Explanatory note from the LLM on why correction confidence is at the reported level.</description>
+        <externalId>false</externalId>
+        <label>Correction Note</label>
+        <length>500</length>
+        <trackHistory>false</trackHistory>
+        <type>LongTextArea</type>
+        <visibleLines>3</visibleLines>
+    </fields>
+    <fields>
+        <fullName>CCC_Raw_Response__c</fullName>
+        <description>Full raw nested JSON returned by the LLM for this attempt. Stored for audit and debugging.</description>
+        <externalId>false</externalId>
+        <label>Raw LLM Response</label>
+        <length>32768</length>
+        <trackHistory>false</trackHistory>
+        <type>LongTextArea</type>
+        <visibleLines>5</visibleLines>
+    </fields>
+    <fields>
         <fullName>Prompt_Template_Version__c</fullName>
         <description>Reference to which CCC Prompt Template version was used for this attempt</description>
         <externalId>false</externalId>
