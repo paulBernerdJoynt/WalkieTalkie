@@ -508,7 +508,7 @@ public with sharing class CCCController {
             Map<String, Object> parsed;
             try {
                 parsed = (Map<String, Object>) JSON.deserializeUntyped(content);
-            } catch (Exception inner) {
+            } catch (Exception parseEx) {
                 result.parseError       = true;
                 result.parseErrorReason = 'Malformed JSON response';
                 result.inputQuality     = 'insufficient';
