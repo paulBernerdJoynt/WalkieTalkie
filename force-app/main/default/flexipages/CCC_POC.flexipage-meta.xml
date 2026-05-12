@@ -5,6 +5,12 @@
         <type>Region</type>
     </flexiPageRegions>
     <flexiPageRegions>
+        <itemInstances>
+            <componentInstance>
+                <componentName>c:cccPromptTemplateManager</componentName>
+                <identifier>c_cccPromptTemplateManager</identifier>
+            </componentInstance>
+        </itemInstances>
         <name>sidebar</name>
         <type>Region</type>
     </flexiPageRegions>
@@ -291,12 +297,6 @@
             <componentInstance>
                 <componentName>cccCapture</componentName>
                 <identifier>c_cccCapture</identifier>
-            </componentInstance>
-        </itemInstances>
-        <itemInstances>
-            <componentInstance>
-                <componentName>c:cccPromptTemplateManager</componentName>
-                <identifier>c_cccPromptTemplateManager</identifier>
             </componentInstance>
         </itemInstances>
         <itemInstances>
