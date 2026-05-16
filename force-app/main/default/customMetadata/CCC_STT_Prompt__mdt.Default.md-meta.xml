@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomMetadata xmlns="http://soap.sforce.com/2006/04/metadata" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+    <label>Default</label>
+    <protected>false</protected>
+    <values>
+        <field>Prompt_Text__c</field>
+        <value xsi:type="xsd:string">You are a speech-to-text transcription assistant for fleet maintenance technicians. Transcribe the audio accurately, preserving technical terms, part names, model numbers, and measurements. If context is unclear, do your best to interpret based on fleet maintenance terminology.</value>
+    </values>
+</CustomMetadata>

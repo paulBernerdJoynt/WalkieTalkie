@@ -1,61 +1,262 @@
 import { LightningElement, api, track } from 'lwc';
-import submitCCC from '@salesforce/apex/CCCController.submitCCC';
+import { CloseActionScreenEvent } from 'lightning/actions';
+import { ShowToastEvent } from 'lightning/platformShowToastEvent';
+import { NavigationMixin } from 'lightning/navigation';
+import transcribeAudio from '@salesforce/apex/CCCController.transcribeAudio';
+import extractCCC      from '@salesforce/apex/CCCController.extractCCC';
 
 const STATE = {
-    INPUT:   'input',
-    LOADING: 'loading',
-    SUCCESS: 'success',
-    ERROR:   'error',
+    IDLE:              'idle',
+    RECORDING:         'recording',
+    TRANSCRIBING:      'transcribing',
+    TRANSCRIPT_READY:  'transcript_ready',
+    EXTRACTING:        'extracting',
+    SUCCESS:           'success',
+    ERROR:             'error',
 };
 
 const NULL_LABEL = '(not identified)';
 
-export default class CccCapture extends LightningElement {
+export default class CccCapture extends NavigationMixin(LightningElement) {
     @api   recordId;
-    @track rawInput     = '';
-    @track state        = STATE.INPUT;
-    @track result       = {};
+    @track state        = STATE.IDLE;
+    @track transcript   = '';
     @track errorMessage = '';
+    @track attemptId    = null;
 
-    get isInput()   { return this.state === STATE.INPUT;   }
-    get isLoading() { return this.state === STATE.LOADING; }
-    get isSuccess() { return this.state === STATE.SUCCESS; }
-    get isError()   { return this.state === STATE.ERROR;   }
+    _path          = null;
+    _result        = {};
+    _mediaRecorder = null;
+    _audioChunks   = [];
+    _baseMimeType  = 'audio/mp4';
 
-    get isSubmitDisabled() {
-        return !this.rawInput || !this.rawInput.trim();
+    // ── State booleans ────────────────────────────────────────────────────────
+
+    get isIdle()             { return this.state === STATE.IDLE;             }
+    get isRecording()        { return this.state === STATE.RECORDING;        }
+    get isTranscribing()     { return this.state === STATE.TRANSCRIBING;     }
+    get isTranscriptReady()  { return this.state === STATE.TRANSCRIPT_READY; }
+    get isExtracting()       { return this.state === STATE.EXTRACTING;       }
+    get isSuccess()          { return this.state === STATE.SUCCESS;          }
+    get isError()            { return this.state === STATE.ERROR;            }
+
+    get isTranscriptBlank() {
+        return !this.transcript || !this.transcript.trim();
     }
 
-    handleInputChange(event) {
-        this.rawInput = event.detail.value;
+    // ── Extracting label ──────────────────────────────────────────────────────
+
+    get extractingLabel() {
+        if (this._path === 'openai')      return 'Running OpenAI GPT-4o…';
+        if (this._path === 'agentforce')  return 'Running Agentforce Prompt Builder…';
+        return 'Running both paths sequentially…';
     }
 
-    async handleSubmit() {
-        this.state = STATE.LOADING;
-        try {
-            const ccc = await submitCCC({
-                workOrderId: this.recordId,
-                rawInput:    this.rawInput,
+    // ── Success display helpers ───────────────────────────────────────────────
+
+    get isSuccessSingle() { return this._path !== 'both'; }
+
+    get providerLabel() {
+        return this._path === 'openai' ? 'OpenAI GPT-4o' : 'Agentforce Prompt Builder';
+    }
+
+    get singleComplaint() {
+        const v = this._path === 'openai'
+            ? this._result.openai_complaint
+            : this._result.af_complaint;
+        return v || NULL_LABEL;
+    }
+    get singleCause() {
+        const v = this._path === 'openai'
+            ? this._result.openai_cause
+            : this._result.af_cause;
+        return v || NULL_LABEL;
+    }
+    get singleCorrection() {
+        const v = this._path === 'openai'
+            ? this._result.openai_correction
+            : this._result.af_correction;
+        return v || NULL_LABEL;
+    }
+
+    get openaiComplaint()  { return this._result.openai_complaint  || NULL_LABEL; }
+    get openaiCause()      { return this._result.openai_cause      || NULL_LABEL; }
+    get openaiCorrection() { return this._result.openai_correction || NULL_LABEL; }
+
+    get agentforceError()  { return this._result.af_error || null; }
+    get afComplaint()      { return this._result.af_complaint  || NULL_LABEL; }
+    get afCause()          { return this._result.af_cause      || NULL_LABEL; }
+    get afCorrection()     { return this._result.af_correction || NULL_LABEL; }
+
+    // ── IDLE handler ──────────────────────────────────────────────────────────
+
+    handleRecord() {
+        this._startRecording();
+    }
+
+    // ── RECORDING handler ─────────────────────────────────────────────────────
+
+    handleStopRecording() {
+        if (this._mediaRecorder && this._mediaRecorder.state === 'recording') {
+            this._mediaRecorder.stop();
+        }
+    }
+
+    // ── TRANSCRIPT_READY handlers ─────────────────────────────────────────────
+
+    handleTranscriptChange(event) {
+        this.transcript = event.detail.value;
+    }
+
+    handleSendOpenAI()      { this._runExtraction('openai');      }
+    handleSendAgentforce()  { this._runExtraction('agentforce');  }
+    handleSendBoth()        { this._runExtraction('both');        }
+
+    // ── SUCCESS handlers ──────────────────────────────────────────────────────
+
+    handleDone() {
+        this.dispatchEvent(new CloseActionScreenEvent());
+    }
+
+    handleReset() {
+        this._reset();
+    }
+
+    handleViewAttempt() {
+        if (this.attemptId) {
+            this[NavigationMixin.Navigate]({
+                type: 'standard__recordPage',
+                attributes: {
+                    recordId: this.attemptId,
+                    actionName: 'view'
+                }
             });
-            this.result = {
-                complaint:  ccc.complaint  || NULL_LABEL,
-                cause:      ccc.cause      || NULL_LABEL,
-                correction: ccc.correction || NULL_LABEL,
+        }
+    }
+
+    // ── Private: recording lifecycle ──────────────────────────────────────────
+
+    async _startRecording() {
+        this._audioChunks = [];
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            this._mediaRecorder = new MediaRecorder(stream);
+            this._baseMimeType  = (this._mediaRecorder.mimeType || 'audio/mp4').split(';')[0];
+
+            this._mediaRecorder.ondataavailable = (e) => {
+                if (e.data && e.data.size > 0) this._audioChunks.push(e.data);
             };
-            this.state = STATE.SUCCESS;
+            this._mediaRecorder.onstop = () => this._onRecordingStop();
+            this._mediaRecorder.start();
+            this.state = STATE.RECORDING;
         } catch (err) {
-            this.errorMessage =
-                (err.body && err.body.message) ||
-                err.message ||
-                'An unexpected error occurred.';
+            this.errorMessage = 'Microphone access denied. Allow microphone access and try again.';
             this.state = STATE.ERROR;
         }
     }
 
-    handleReset() {
-        this.rawInput     = '';
-        this.result       = {};
-        this.errorMessage = '';
-        this.state        = STATE.INPUT;
+    async _onRecordingStop() {
+        try {
+            this._mediaRecorder.stream.getTracks().forEach(t => t.stop());
+        } catch (_) { /* best-effort */ }
+
+        this.state = STATE.TRANSCRIBING;
+
+        const audioBlob   = new Blob(this._audioChunks, { type: this._baseMimeType });
+        const base64Audio = await this._blobToBase64(audioBlob);
+
+        try {
+            this.transcript = await transcribeAudio({
+                workOrderId: this.recordId,
+                base64Audio,
+                mimeType: this._baseMimeType,
+            });
+
+            if (!this.transcript || !this.transcript.trim()) {
+                this.errorMessage = 'No speech detected. Please try again.';
+                this._showErrorToast(this.errorMessage);
+                this.state = STATE.ERROR;
+                return;
+            }
+
+            this.state = STATE.TRANSCRIPT_READY;
+        } catch (err) {
+            this.errorMessage =
+                (err.body && err.body.message) || err.message || 'Transcription failed.';
+            this._showErrorToast(this.errorMessage);
+            this.state = STATE.ERROR;
+        }
+    }
+
+    async _runExtraction(path) {
+        this._path = path;
+        this.state = STATE.EXTRACTING;
+        try {
+            this._result = await extractCCC({
+                workOrderId: this.recordId,
+                transcript:  this.transcript,
+                path,
+            });
+            this.state = STATE.SUCCESS;
+        } catch (err) {
+            this.errorMessage =
+                (err.body && err.body.message) || err.message || 'Extraction failed.';
+            this._showErrorToast(this.errorMessage);
+            this.state = STATE.ERROR;
+        }
+    }
+
+    _reset() {
+        this._audioChunks   = [];
+        this._mediaRecorder = null;
+        this._result        = {};
+        this._path          = null;
+        this.transcript     = '';
+        this.errorMessage   = '';
+        this.attemptId      = null;
+        this.state          = STATE.IDLE;
+    }
+
+    /**
+     * Extract attempt ID from error message if present.
+     * Error messages are formatted as: "Message. Attempt: <attemptId>" or "Message Attempt: <attemptId>"
+     */
+    _extractAttemptId(errorMessage) {
+        const match = errorMessage.match(/Attempt:\s+([a-zA-Z0-9]{15,18})/);
+        return match ? match[1] : null;
+    }
+
+    /**
+     * Show error toast with optional navigation to attempt record
+     */
+    _showErrorToast(errorMessage) {
+        this.attemptId = this._extractAttemptId(errorMessage);
+
+        if (this.attemptId) {
+            this.dispatchEvent(new ShowToastEvent({
+                title: 'Extraction Failed',
+                message: 'View the attempt to see what was captured.',
+                variant: 'error',
+                mode: 'dismissable'
+            }));
+        } else {
+            this.dispatchEvent(new ShowToastEvent({
+                title: 'Extraction Failed',
+                message: errorMessage,
+                variant: 'error',
+                mode: 'dismissable'
+            }));
+        }
+    }
+
+    // ── Private: blob → base64 ────────────────────────────────────────────────
+
+    _blobToBase64(blob) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload  = () => resolve(reader.result.split(',')[1]);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+        });
     }
 }

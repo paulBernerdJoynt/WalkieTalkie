@@ -1,0 +1,360 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<FlexiPage xmlns="http://soap.sforce.com/2006/04/metadata">
+
+    <!-- ── Overview: left column fields ─────────────────────────────────────── -->
+    <flexiPageRegions>
+        <itemInstances>
+            <fieldInstance>
+                <fieldInstanceProperties>
+                    <name>uiBehavior</name>
+                    <value>required</value>
+                </fieldInstanceProperties>
+                <fieldItem>Record.Work_Order__c</fieldItem>
+                <identifier>RecordWork_Order_cField</identifier>
+            </fieldInstance>
+        </itemInstances>
+        <itemInstances>
+            <fieldInstance>
+                <fieldInstanceProperties>
+                    <name>uiBehavior</name>
+                    <value>readonly</value>
+                </fieldInstanceProperties>
+                <fieldItem>Record.Prompt_Template_Version__c</fieldItem>
+                <identifier>RecordPrompt_Template_Version_cField</identifier>
+            </fieldInstance>
+        </itemInstances>
+        <name>Facet-overview-left</name>
+        <type>Facet</type>
+    </flexiPageRegions>
+
+    <!-- ── Overview: right column fields ────────────────────────────────────── -->
+    <flexiPageRegions>
+        <itemInstances>
+            <fieldInstance>
+                <fieldInstanceProperties>
+                    <name>uiBehavior</name>
+                    <value>readonly</value>
+                </fieldInstanceProperties>
+                <fieldItem>Record.Name</fieldItem>
+                <identifier>RecordNameField</identifier>
+            </fieldInstance>
+        </itemInstances>
+        <itemInstances>
+            <fieldInstance>
+                <fieldInstanceProperties>
+                    <name>uiBehavior</name>
+                    <value>readonly</value>
+                </fieldInstanceProperties>
+                <fieldItem>Record.CreatedById</fieldItem>
+                <identifier>RecordCreatedByIdField</identifier>
+            </fieldInstance>
+        </itemInstances>
+        <name>Facet-overview-right</name>
+        <type>Facet</type>
+    </flexiPageRegions>
+
+    <!-- ── Overview: two-column wrapper ─────────────────────────────────────── -->
+    <flexiPageRegions>
+        <itemInstances>
+            <componentInstance>
+                <componentInstanceProperties>
+                    <name>body</name>
+                    <value>Facet-overview-left</value>
+                </componentInstanceProperties>
+                <componentName>flexipage:column</componentName>
+                <identifier>flexipage_column_ov1</identifier>
+            </componentInstance>
+        </itemInstances>
+        <itemInstances>
+            <componentInstance>
+                <componentInstanceProperties>
+                    <name>body</name>
+                    <value>Facet-overview-right</value>
+                </componentInstanceProperties>
+                <componentName>flexipage:column</componentName>
+                <identifier>flexipage_column_ov2</identifier>
+            </componentInstance>
+        </itemInstances>
+        <name>Facet-overview-cols</name>
+        <type>Facet</type>
+    </flexiPageRegions>
+
+    <!-- ── Pipeline Status: left column fields ───────────────────────────────── -->
+    <flexiPageRegions>
+        <itemInstances>
+            <fieldInstance>
+                <fieldInstanceProperties>
+                    <name>uiBehavior</name>
+                    <value>readonly</value>
+                </fieldInstanceProperties>
+                <fieldItem>Record.SpeechToText_Status__c</fieldItem>
+                <identifier>RecordSpeechToText_Status_cField</identifier>
+            </fieldInstance>
+        </itemInstances>
+        <itemInstances>
+            <fieldInstance>
+                <fieldInstanceProperties>
+                    <name>uiBehavior</name>
+                    <value>readonly</value>
+                </fieldInstanceProperties>
+                <fieldItem>Record.SpeechToText_Failure_Reason__c</fieldItem>
+                <identifier>RecordSpeechToText_Failure_Reason_cField</identifier>
+            </fieldInstance>
+        </itemInstances>
+        <name>Facet-pipeline-left</name>
+        <type>Facet</type>
+    </flexiPageRegions>
+
+    <!-- ── Pipeline Status: right column fields ──────────────────────────────── -->
+    <flexiPageRegions>
+        <itemInstances>
+            <fieldInstance>
+                <fieldInstanceProperties>
+                    <name>uiBehavior</name>
+                    <value>readonly</value>
+                </fieldInstanceProperties>
+                <fieldItem>Record.OpenAI_CCC_Status__c</fieldItem>
+                <identifier>RecordOpenAI_CCC_Status_cField</identifier>
+            </fieldInstance>
+        </itemInstances>
+        <itemInstances>
+            <fieldInstance>
+                <fieldInstanceProperties>
+                    <name>uiBehavior</name>
+                    <value>readonly</value>
+                </fieldInstanceProperties>
+                <fieldItem>Record.OpenAI_Failure_Reason__c</fieldItem>
+                <identifier>RecordOpenAI_Failure_Reason_cField</identifier>
+            </fieldInstance>
+        </itemInstances>
+        <name>Facet-pipeline-right</name>
+        <type>Facet</type>
+    </flexiPageRegions>
+
+    <!-- ── Pipeline Status: two-column wrapper ───────────────────────────────── -->
+    <flexiPageRegions>
+        <itemInstances>
+            <componentInstance>
+                <componentInstanceProperties>
+                    <name>body</name>
+                    <value>Facet-pipeline-left</value>
+                </componentInstanceProperties>
+                <componentName>flexipage:column</componentName>
+                <identifier>flexipage_column_ps1</identifier>
+            </componentInstance>
+        </itemInstances>
+        <itemInstances>
+            <componentInstance>
+                <componentInstanceProperties>
+                    <name>body</name>
+                    <value>Facet-pipeline-right</value>
+                </componentInstanceProperties>
+                <componentName>flexipage:column</componentName>
+                <identifier>flexipage_column_ps2</identifier>
+            </componentInstance>
+        </itemInstances>
+        <name>Facet-pipeline-cols</name>
+        <type>Facet</type>
+    </flexiPageRegions>
+
+    <!-- ── Raw Input: single column ──────────────────────────────────────────── -->
+    <flexiPageRegions>
+        <itemInstances>
+            <fieldInstance>
+                <fieldInstanceProperties>
+                    <name>uiBehavior</name>
+                    <value>readonly</value>
+                </fieldInstanceProperties>
+                <fieldItem>Record.Raw_Input__c</fieldItem>
+                <identifier>RecordRaw_Input_cField</identifier>
+            </fieldInstance>
+        </itemInstances>
+        <name>Facet-rawinput-left</name>
+        <type>Facet</type>
+    </flexiPageRegions>
+
+    <!-- ── Raw Input: column wrapper ─────────────────────────────────────────── -->
+    <flexiPageRegions>
+        <itemInstances>
+            <componentInstance>
+                <componentInstanceProperties>
+                    <name>body</name>
+                    <value>Facet-rawinput-left</value>
+                </componentInstanceProperties>
+                <componentName>flexipage:column</componentName>
+                <identifier>flexipage_column_ri1</identifier>
+            </componentInstance>
+        </itemInstances>
+        <name>Facet-rawinput-cols</name>
+        <type>Facet</type>
+    </flexiPageRegions>
+
+    <!-- ── Extracted CCC: left column ────────────────────────────────────────── -->
+    <flexiPageRegions>
+        <itemInstances>
+            <fieldInstance>
+                <fieldInstanceProperties>
+                    <name>uiBehavior</name>
+                    <value>readonly</value>
+                </fieldInstanceProperties>
+                <fieldItem>Record.Complaint__c</fieldItem>
+                <identifier>RecordComplaint_cField</identifier>
+            </fieldInstance>
+        </itemInstances>
+        <itemInstances>
+            <fieldInstance>
+                <fieldInstanceProperties>
+                    <name>uiBehavior</name>
+                    <value>readonly</value>
+                </fieldInstanceProperties>
+                <fieldItem>Record.Cause__c</fieldItem>
+                <identifier>RecordCause_cField</identifier>
+            </fieldInstance>
+        </itemInstances>
+        <name>Facet-ccc-left</name>
+        <type>Facet</type>
+    </flexiPageRegions>
+
+    <!-- ── Extracted CCC: right column ───────────────────────────────────────── -->
+    <flexiPageRegions>
+        <itemInstances>
+            <fieldInstance>
+                <fieldInstanceProperties>
+                    <name>uiBehavior</name>
+                    <value>readonly</value>
+                </fieldInstanceProperties>
+                <fieldItem>Record.Correction__c</fieldItem>
+                <identifier>RecordCorrection_cField</identifier>
+            </fieldInstance>
+        </itemInstances>
+        <name>Facet-ccc-right</name>
+        <type>Facet</type>
+    </flexiPageRegions>
+
+    <!-- ── Extracted CCC: two-column wrapper ─────────────────────────────────── -->
+    <flexiPageRegions>
+        <itemInstances>
+            <componentInstance>
+                <componentInstanceProperties>
+                    <name>body</name>
+                    <value>Facet-ccc-left</value>
+                </componentInstanceProperties>
+                <componentName>flexipage:column</componentName>
+                <identifier>flexipage_column_ccc1</identifier>
+            </componentInstance>
+        </itemInstances>
+        <itemInstances>
+            <componentInstance>
+                <componentInstanceProperties>
+                    <name>body</name>
+                    <value>Facet-ccc-right</value>
+                </componentInstanceProperties>
+                <componentName>flexipage:column</componentName>
+                <identifier>flexipage_column_ccc2</identifier>
+            </componentInstance>
+        </itemInstances>
+        <name>Facet-ccc-cols</name>
+        <type>Facet</type>
+    </flexiPageRegions>
+
+    <!-- ── header (empty) ────────────────────────────────────────────────────── -->
+    <flexiPageRegions>
+        <name>header</name>
+        <type>Region</type>
+    </flexiPageRegions>
+
+    <!-- ── sidebar (empty) ───────────────────────────────────────────────────── -->
+    <flexiPageRegions>
+        <name>sidebar</name>
+        <type>Region</type>
+    </flexiPageRegions>
+
+    <!-- ── main: fieldSection components in order ────────────────────────────── -->
+    <flexiPageRegions>
+        <itemInstances>
+            <componentInstance>
+                <componentInstanceProperties>
+                    <name>columns</name>
+                    <value>Facet-overview-cols</value>
+                </componentInstanceProperties>
+                <componentInstanceProperties>
+                    <name>horizontalAlignment</name>
+                    <value>false</value>
+                </componentInstanceProperties>
+                <componentInstanceProperties>
+                    <name>label</name>
+                    <value>Overview</value>
+                </componentInstanceProperties>
+                <componentName>flexipage:fieldSection</componentName>
+                <identifier>flexipage_fieldSection_overview</identifier>
+            </componentInstance>
+        </itemInstances>
+        <itemInstances>
+            <componentInstance>
+                <componentInstanceProperties>
+                    <name>columns</name>
+                    <value>Facet-pipeline-cols</value>
+                </componentInstanceProperties>
+                <componentInstanceProperties>
+                    <name>horizontalAlignment</name>
+                    <value>false</value>
+                </componentInstanceProperties>
+                <componentInstanceProperties>
+                    <name>label</name>
+                    <value>Pipeline Status</value>
+                </componentInstanceProperties>
+                <componentName>flexipage:fieldSection</componentName>
+                <identifier>flexipage_fieldSection_pipeline</identifier>
+            </componentInstance>
+        </itemInstances>
+        <itemInstances>
+            <componentInstance>
+                <componentInstanceProperties>
+                    <name>columns</name>
+                    <value>Facet-rawinput-cols</value>
+                </componentInstanceProperties>
+                <componentInstanceProperties>
+                    <name>horizontalAlignment</name>
+                    <value>false</value>
+                </componentInstanceProperties>
+                <componentInstanceProperties>
+                    <name>label</name>
+                    <value>Raw Input</value>
+                </componentInstanceProperties>
+                <componentName>flexipage:fieldSection</componentName>
+                <identifier>flexipage_fieldSection_rawinput</identifier>
+            </componentInstance>
+        </itemInstances>
+        <itemInstances>
+            <componentInstance>
+                <componentInstanceProperties>
+                    <name>columns</name>
+                    <value>Facet-ccc-cols</value>
+                </componentInstanceProperties>
+                <componentInstanceProperties>
+                    <name>horizontalAlignment</name>
+                    <value>false</value>
+                </componentInstanceProperties>
+                <componentInstanceProperties>
+                    <name>label</name>
+                    <value>Extracted CCC</value>
+                </componentInstanceProperties>
+                <componentName>flexipage:fieldSection</componentName>
+                <identifier>flexipage_fieldSection_ccc</identifier>
+            </componentInstance>
+        </itemInstances>
+        <name>main</name>
+        <type>Region</type>
+    </flexiPageRegions>
+
+    <masterLabel>CCC LLM Attempt Record Page</masterLabel>
+    <sobjectType>CCC_LLM_Attempt__c</sobjectType>
+    <template>
+        <name>flexipage:recordHomeLeftSidebarTemplateDesktop</name>
+        <properties>
+            <name>enablePageActionConfig</name>
+            <value>false</value>
+        </properties>
+    </template>
+    <type>RecordPage</type>
+</FlexiPage>

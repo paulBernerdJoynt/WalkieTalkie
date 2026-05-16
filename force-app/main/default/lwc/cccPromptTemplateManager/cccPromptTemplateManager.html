@@ -1,0 +1,208 @@
+<template>
+    <lightning-card title="CCC Prompt Template Manager" icon-name="standard:config">
+        <div class="slds-p-around_medium" style="width:100%;box-sizing:border-box;">
+            <lightning-spinner if:true={isLoading} alternative-text="Loading..."></lightning-spinner>
+
+            <template if:true={hasTemplates}>
+
+                <!-- 1. Extraction Instructions — primary editing target, full width -->
+                <div class="slds-form-element slds-m-bottom_medium">
+                    <label class="slds-form-element__label">
+                        <abbr class="slds-required" title="required">*</abbr> Extraction Instructions
+                    </label>
+                    <div class="slds-form-element__control">
+                        <lightning-textarea
+                            if:false={isEditing}
+                            value={selectedTemplate.Prompt_Text__c}
+                            disabled
+                            rows="15"
+                            style="width:100%"
+                        ></lightning-textarea>
+                        <lightning-textarea
+                            if:true={isEditing}
+                            value={editingTemplate.Prompt_Text__c}
+                            data-field="Prompt_Text__c"
+                            onchange={handleFieldChange}
+                            rows="15"
+                            required
+                            style="width:100%"
+                        ></lightning-textarea>
+                    </div>
+                </div>
+
+                <!-- 2. System Prompt — stable schema/format contract, edit rarely -->
+                <div class="slds-form-element slds-m-bottom_medium">
+                    <label class="slds-form-element__label">System Prompt</label>
+                    <p class="slds-form-element__help slds-m-bottom_x-small">
+                        JSON output schema, confidence/source/note definitions, and format rules.
+                        Changes here affect the response parser — edit carefully.
+                    </p>
+                    <div class="slds-form-element__control">
+                        <lightning-textarea
+                            if:false={isEditing}
+                            value={selectedTemplate.System_Prompt__c}
+                            disabled
+                            rows="10"
+                            style="width:100%"
+                        ></lightning-textarea>
+                        <lightning-textarea
+                            if:true={isEditing}
+                            value={editingTemplate.System_Prompt__c}
+                            data-field="System_Prompt__c"
+                            onchange={handleFieldChange}
+                            rows="10"
+                            style="width:100%"
+                        ></lightning-textarea>
+                    </div>
+                </div>
+
+                <!-- 3. Template picker + active badge + action buttons -->
+                <div class="slds-grid slds-wrap slds-gutters_x-small slds-m-bottom_large" style="align-items:flex-end;">
+                    <div class="slds-col slds-grow">
+                        <lightning-combobox
+                            if:false={isEditing}
+                            label="Template"
+                            value={selectedTemplateId}
+                            options={templateOptions}
+                            onchange={handleSelectTemplate}
+                            variant="label-inline"
+                        ></lightning-combobox>
+                        <p if:true={isEditing} class="slds-text-body_small slds-text-color_weak slds-m-top_x-small">
+                            Editing: <strong>{editingTemplate.Name}</strong>
+                        </p>
+                    </div>
+                    <div if:true={isActiveTemplate} class="slds-col slds-no-flex slds-m-left_x-small" style="padding-bottom:2px;">
+                        <lightning-badge label="Active" variant="success"></lightning-badge>
+                    </div>
+                    <div class="slds-col slds-no-flex slds-m-left_small" style="padding-bottom:2px;">
+                        <lightning-button
+                            if:false={isEditing}
+                            label="Edit"
+                            onclick={handleEdit}
+                            class="slds-m-right_x-small"
+                        ></lightning-button>
+                        <lightning-button
+                            if:true={canSetActive}
+                            label="Set as Active"
+                            variant="success"
+                            onclick={handleSetActive}
+                            class="slds-m-right_x-small"
+                        ></lightning-button>
+                        <lightning-button
+                            if:true={isEditing}
+                            label="Save"
+                            variant="success"
+                            onclick={handleSave}
+                            class="slds-m-right_x-small"
+                        ></lightning-button>
+                        <lightning-button
+                            if:true={isEditing}
+                            label="Cancel"
+                            onclick={handleCancel}
+                        ></lightning-button>
+                    </div>
+                </div>
+
+                <!-- 4. Notes -->
+                <div class="slds-form-element slds-m-bottom_medium">
+                    <label class="slds-form-element__label">Notes</label>
+                    <div class="slds-form-element__control">
+                        <lightning-textarea
+                            if:false={isEditing}
+                            value={selectedTemplate.Notes__c}
+                            disabled
+                            rows="3"
+                            style="width:100%"
+                        ></lightning-textarea>
+                        <lightning-textarea
+                            if:true={isEditing}
+                            value={editingTemplate.Notes__c}
+                            data-field="Notes__c"
+                            onchange={handleFieldChange}
+                            rows="3"
+                            placeholder="What changed in this version?"
+                            style="width:100%"
+                        ></lightning-textarea>
+                    </div>
+                </div>
+
+                <!-- 5. Template name, version, active — compact row at bottom -->
+                <div class="slds-grid slds-wrap slds-gutters_small slds-m-bottom_large">
+                    <div class="slds-col slds-size_1-of-2">
+                        <lightning-input
+                            if:false={isEditing}
+                            type="text"
+                            label="Template Name"
+                            value={selectedTemplate.Name}
+                            disabled
+                        ></lightning-input>
+                        <lightning-input
+                            if:true={isEditing}
+                            type="text"
+                            label="Template Name"
+                            value={editingTemplate.Name}
+                            data-field="Name"
+                            onchange={handleFieldChange}
+                            required
+                        ></lightning-input>
+                    </div>
+                    <div class="slds-col slds-size_1-of-4">
+                        <lightning-input
+                            if:false={isEditing}
+                            type="text"
+                            label="Version"
+                            value={selectedTemplate.Version_Number__c}
+                            disabled
+                        ></lightning-input>
+                        <lightning-input
+                            if:true={isEditing}
+                            type="text"
+                            label="Version"
+                            value={editingTemplate.Version_Number__c}
+                            data-field="Version_Number__c"
+                            onchange={handleFieldChange}
+                            placeholder="e.g. 1.1"
+                            required
+                        ></lightning-input>
+                    </div>
+                    <div class="slds-col slds-size_1-of-4">
+                        <lightning-input
+                            if:false={isEditing}
+                            type="checkbox"
+                            label="Is Active"
+                            checked={selectedTemplate.Is_Active__c}
+                            disabled
+                        ></lightning-input>
+                        <lightning-input
+                            if:true={isEditing}
+                            type="checkbox"
+                            label="Is Active"
+                            checked={editingTemplate.Is_Active__c}
+                            onchange={handleCheckboxChange}
+                        ></lightning-input>
+                    </div>
+                </div>
+
+                <!-- 6. Recent attempts -->
+                <div class="slds-m-top_large">
+                    <h4 class="slds-text-heading_small slds-m-bottom_small">
+                        Recent Attempts Using This Template
+                    </h4>
+                    <lightning-datatable
+                        key-field="Id"
+                        data={selectedTemplate.LLM_Attempts__r}
+                        columns={attemptColumns}
+                        hide-default-actions
+                    ></lightning-datatable>
+                </div>
+
+            </template>
+
+            <template if:false={hasTemplates}>
+                <div class="slds-box slds-box_small slds-text-align_center">
+                    <p>No prompt templates found. Create one to get started.</p>
+                </div>
+            </template>
+        </div>
+    </lightning-card>
+</template>

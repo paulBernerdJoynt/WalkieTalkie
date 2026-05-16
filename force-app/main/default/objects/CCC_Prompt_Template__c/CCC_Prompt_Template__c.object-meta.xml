@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomObject xmlns="http://soap.sforce.com/2006/04/metadata">
+    <actionOverrides>
+        <actionName>View</actionName>
+        <type>Default</type>
+    </actionOverrides>
+    <description>Versioned LLM prompt templates for CCC extraction. Allows iterative refinement and version tracking.</description>
+    <enableActivities>false</enableActivities>
+    <enableBulkApi>true</enableBulkApi>
+    <enableFeeds>false</enableFeeds>
+    <enableHistory>true</enableHistory>
+    <enableReports>false</enableReports>
+    <enableSearch>true</enableSearch>
+    <enableSharing>true</enableSharing>
+    <enableStreamingApi>true</enableStreamingApi>
+    <fields>
+        <fullName>Is_Active__c</fullName>
+        <defaultValue>false</defaultValue>
+        <description>Only one template should be active at a time. This is the version used by the LLM extraction.</description>
+        <externalId>false</externalId>
+        <inlineHelpText>Check this to make this version the active prompt template</inlineHelpText>
+        <label>Is Active</label>
+        <trackHistory>true</trackHistory>
+        <type>Checkbox</type>
+    </fields>
+    <fields>
+        <fullName>System_Prompt__c</fullName>
+        <description>The stable output-format contract: JSON schema, field structure, confidence/source/note definitions, input_quality taxonomy. Edit rarely — changes here affect parseResponse() in CCCController.</description>
+        <externalId>false</externalId>
+        <inlineHelpText>Output schema and scoring rules sent as the first part of the system message. Keep this stable; edit Prompt Text for extraction rule changes.</inlineHelpText>
+        <label>System Prompt</label>
+        <length>10000</length>
+        <trackHistory>true</trackHistory>
+        <type>LongTextArea</type>
+        <visibleLines>10</visibleLines>
+    </fields>
+    <fields>
+        <fullName>Prompt_Text__c</fullName>
+        <description>The system prompt for GPT-4o CCC extraction. This is the prompt that guides the LLM.</description>
+        <externalId>false</externalId>
+        <inlineHelpText>Full system prompt sent to OpenAI. Edit to refine extraction behavior.</inlineHelpText>
+        <label>Prompt Text</label>
+        <length>10000</length>
+        <trackHistory>true</trackHistory>
+        <type>LongTextArea</type>
+        <visibleLines>25</visibleLines>
+    </fields>
+    <fields>
+        <fullName>Version_Number__c</fullName>
+        <description>Semantic version or iteration number. e.g., 1.3, 1.4</description>
+        <externalId>false</externalId>
+        <inlineHelpText>Version identifier for this template</inlineHelpText>
+        <label>Version Number</label>
+        <length>32</length>
+        <required>true</required>
+        <trackHistory>true</trackHistory>
+        <type>Text</type>
+        <unique>false</unique>
+    </fields>
+    <fields>
+        <fullName>Notes__c</fullName>
+        <description>Optional notes about this version. What changed? Why?</description>
+        <externalId>false</externalId>
+        <label>Notes</label>
+        <length>1000</length>
+        <trackHistory>true</trackHistory>
+        <type>LongTextArea</type>
+        <visibleLines>5</visibleLines>
+    </fields>
+    <deploymentStatus>Deployed</deploymentStatus>
+    <label>CCC Prompt Template</label>
+    <listViews>
+        <fullName>All</fullName>
+        <filterScope>Everything</filterScope>
+        <label>All</label>
+    </listViews>
+    <listViews>
+        <fullName>Active</fullName>
+        <filterScope>Everything</filterScope>
+        <filters>
+            <field>Is_Active__c</field>
+            <operation>equals</operation>
+            <value>1</value>
+        </filters>
+        <label>Active</label>
+    </listViews>
+    <nameField>
+        <label>Template Name</label>
+        <trackHistory>true</trackHistory>
+        <type>Text</type>
+    </nameField>
+    <pluralLabel>CCC Prompt Templates</pluralLabel>
+    <searchLayouts/>
+    <sharingModel>ReadWrite</sharingModel>
+</CustomObject>
