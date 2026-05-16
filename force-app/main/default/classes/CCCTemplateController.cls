@@ -6,7 +6,7 @@ public with sharing class CCCTemplateController {
     @AuraEnabled(cacheable=true)
     public static List<CCC_Prompt_Template__c> getAllTemplates() {
         return [
-            SELECT Id, Name, Version_Number__c, Prompt_Text__c, Notes__c, Is_Active__c, CreatedDate
+            SELECT Id, Name, Version_Number__c, System_Prompt__c, Prompt_Text__c, Notes__c, Is_Active__c, CreatedDate
             FROM CCC_Prompt_Template__c
             ORDER BY CreatedDate DESC
         ];
@@ -18,7 +18,7 @@ public with sharing class CCCTemplateController {
     @AuraEnabled(cacheable=true)
     public static CCC_Prompt_Template__c getActiveTemplate() {
         List<CCC_Prompt_Template__c> templates = [
-            SELECT Id, Name, Version_Number__c, Prompt_Text__c, Notes__c, Is_Active__c, CreatedDate
+            SELECT Id, Name, Version_Number__c, System_Prompt__c, Prompt_Text__c, Notes__c, Is_Active__c, CreatedDate
             FROM CCC_Prompt_Template__c
             WHERE Is_Active__c = true
             LIMIT 1
@@ -68,7 +68,7 @@ public with sharing class CCCTemplateController {
 
         // Return the updated template
         return [
-            SELECT Id, Name, Version_Number__c, Prompt_Text__c, Notes__c, Is_Active__c, CreatedDate
+            SELECT Id, Name, Version_Number__c, System_Prompt__c, Prompt_Text__c, Notes__c, Is_Active__c, CreatedDate
             FROM CCC_Prompt_Template__c
             WHERE Id = :templateId
             LIMIT 1

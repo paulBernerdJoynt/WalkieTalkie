@@ -177,6 +177,11 @@
         <field>CCC_Prompt_Template__c.Prompt_Text__c</field>
         <readable>true</readable>
     </fieldPermissions>
+    <fieldPermissions>
+        <editable>true</editable>
+        <field>CCC_Prompt_Template__c.System_Prompt__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
     <hasActivationRequired>false</hasActivationRequired>
     <label>CCC Field Access</label>
 

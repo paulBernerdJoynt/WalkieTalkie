@@ -5,10 +5,10 @@
 
             <template if:true={hasTemplates}>
 
-                <!-- 1. Prompt text — primary focus, full width -->
+                <!-- 1. Extraction Instructions — primary editing target, full width -->
                 <div class="slds-form-element slds-m-bottom_medium">
                     <label class="slds-form-element__label">
-                        <abbr class="slds-required" title="required">*</abbr> Prompt Text
+                        <abbr class="slds-required" title="required">*</abbr> Extraction Instructions
                     </label>
                     <div class="slds-form-element__control">
                         <lightning-textarea
@@ -30,7 +30,33 @@
                     </div>
                 </div>
 
-                <!-- 2. Template picker + active badge + action buttons -->
+                <!-- 2. System Prompt — stable schema/format contract, edit rarely -->
+                <div class="slds-form-element slds-m-bottom_medium">
+                    <label class="slds-form-element__label">System Prompt</label>
+                    <p class="slds-form-element__help slds-m-bottom_x-small">
+                        JSON output schema, confidence/source/note definitions, and format rules.
+                        Changes here affect the response parser — edit carefully.
+                    </p>
+                    <div class="slds-form-element__control">
+                        <lightning-textarea
+                            if:false={isEditing}
+                            value={selectedTemplate.System_Prompt__c}
+                            disabled
+                            rows="10"
+                            style="width:100%"
+                        ></lightning-textarea>
+                        <lightning-textarea
+                            if:true={isEditing}
+                            value={editingTemplate.System_Prompt__c}
+                            data-field="System_Prompt__c"
+                            onchange={handleFieldChange}
+                            rows="10"
+                            style="width:100%"
+                        ></lightning-textarea>
+                    </div>
+                </div>
+
+                <!-- 3. Template picker + active badge + action buttons -->
                 <div class="slds-grid slds-wrap slds-gutters_x-small slds-m-bottom_large" style="align-items:flex-end;">
                     <div class="slds-col slds-grow">
                         <lightning-combobox
@@ -77,7 +103,7 @@
                     </div>
                 </div>
 
-                <!-- 3. Notes -->
+                <!-- 4. Notes -->
                 <div class="slds-form-element slds-m-bottom_medium">
                     <label class="slds-form-element__label">Notes</label>
                     <div class="slds-form-element__control">
@@ -100,7 +126,7 @@
                     </div>
                 </div>
 
-                <!-- 4. Template name, version, active — compact row at bottom -->
+                <!-- 5. Template name, version, active — compact row at bottom -->
                 <div class="slds-grid slds-wrap slds-gutters_small slds-m-bottom_large">
                     <div class="slds-col slds-size_1-of-2">
                         <lightning-input
@@ -157,7 +183,7 @@
                     </div>
                 </div>
 
-                <!-- 5. Recent attempts -->
+                <!-- 6. Recent attempts -->
                 <div class="slds-m-top_large">
                     <h4 class="slds-text-heading_small slds-m-bottom_small">
                         Recent Attempts Using This Template

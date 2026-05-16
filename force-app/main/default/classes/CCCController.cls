@@ -58,7 +58,7 @@ public with sharing class CCCController {
      * OpenAI result is still written and 'af_error' is returned in the map.
      */
     @AuraEnabled
-    public static Map<String, String> extractCCC(String workOrderId, String transcript, String path) {
+    public static Map<String, String> extractCCC(String workOrderId, String transcript, String path, String submissionSource) {
         if (String.isBlank(workOrderId)) throw new AuraHandledException('Work Order ID is required.');
         if (String.isBlank(transcript))  throw new AuraHandledException('Transcript is required.');
         if (String.isBlank(path))        throw new AuraHandledException('Path is required.');
@@ -78,7 +78,8 @@ public with sharing class CCCController {
             Work_Order__c              = workOrderId,
             Raw_Input__c               = transcript,
             Prompt_Template_Version__c = activeTemplateId,
-            OpenAI_CCC_Status__c       = 'Not Attempted'
+            OpenAI_CCC_Status__c       = 'Not Attempted',
+            Submission_Source__c       = submissionSource
         );
 
         // ── HTTP callout (OpenAI) ─────────────────────────────────────────────
@@ -379,17 +380,23 @@ public with sharing class CCCController {
 
     /**
      * Get the active CCC_Prompt_Template__c prompt text. Falls back to hardcoded constant.
+     * Concatenates System_Prompt__c (stable schema/format) + Prompt_Text__c (iterative extraction rules).
      */
     private static String getActivePrompt() {
         try {
             List<CCC_Prompt_Template__c> templates = [
-                SELECT Prompt_Text__c
+                SELECT System_Prompt__c, Prompt_Text__c
                 FROM CCC_Prompt_Template__c
                 WHERE Is_Active__c = true
                 LIMIT 1
             ];
             if (!templates.isEmpty()) {
-                return templates[0].Prompt_Text__c;
+                CCC_Prompt_Template__c t = templates[0];
+                Boolean hasSystem = String.isNotBlank(t.System_Prompt__c);
+                Boolean hasText   = String.isNotBlank(t.Prompt_Text__c);
+                if (hasSystem && hasText)  return t.System_Prompt__c + '\n\n' + t.Prompt_Text__c;
+                if (hasSystem)             return t.System_Prompt__c;
+                if (hasText)               return t.Prompt_Text__c;
             }
         } catch (Exception e) {
             // Query failed; fall through to fallback

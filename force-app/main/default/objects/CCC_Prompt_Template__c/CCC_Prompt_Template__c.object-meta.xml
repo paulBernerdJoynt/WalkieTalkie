@@ -24,6 +24,17 @@
         <type>Checkbox</type>
     </fields>
     <fields>
+        <fullName>System_Prompt__c</fullName>
+        <description>The stable output-format contract: JSON schema, field structure, confidence/source/note definitions, input_quality taxonomy. Edit rarely — changes here affect parseResponse() in CCCController.</description>
+        <externalId>false</externalId>
+        <inlineHelpText>Output schema and scoring rules sent as the first part of the system message. Keep this stable; edit Prompt Text for extraction rule changes.</inlineHelpText>
+        <label>System Prompt</label>
+        <length>10000</length>
+        <trackHistory>true</trackHistory>
+        <type>LongTextArea</type>
+        <visibleLines>10</visibleLines>
+    </fields>
+    <fields>
         <fullName>Prompt_Text__c</fullName>
         <description>The system prompt for GPT-4o CCC extraction. This is the prompt that guides the LLM.</description>
         <externalId>false</externalId>
